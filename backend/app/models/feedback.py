@@ -1,0 +1,25 @@
+from datetime import datetime
+
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy.orm import relationship
+
+from app.core.db import Base
+
+
+class Feedback(Base):
+    __tablename__ = "feedback"
+
+    id = Column(Integer, primary_key=True, index=True)
+    lesson_id = Column(Integer, ForeignKey("lessons.id", ondelete="CASCADE"), nullable=False, index=True)
+    student_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    rating = Column(Float, nullable=False)
+    comment = Column(Text, nullable=True)
+    is_hidden = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    lesson = relationship("Lesson", back_populates="feedbacks")
+    student = relationship("User", back_populates="feedbacks")
+
+    __table_args__ = (
+        UniqueConstraint("lesson_id", "student_id", name="uq_feedback_lesson_student"),
+    )
