@@ -8,6 +8,10 @@ class Token(BaseModel):
     token_type: str = "bearer"
 
 
+class TokenResponse(Token):
+    pass
+
+
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
