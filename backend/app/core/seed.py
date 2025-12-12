@@ -27,6 +27,12 @@ def run_seed() -> None:
                 "is_superuser": True,
             },
             {
+                "email": "a@a.com",
+                "full_name": "Администратор системы",
+                "password": "123",
+                "is_superuser": True,
+            },
+            {
                 "email": "teacher.irina@example.com",
                 "full_name": "Ирина Петрова",
                 "password": "teacher123",

@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, DateTime, Integer, String
+from sqlalchemy import Boolean, Column, Date, DateTime, Integer, String, Text
 from sqlalchemy.orm import relationship
 
 from app.core.db import Base
@@ -16,6 +16,13 @@ class User(Base):
     is_active = Column(Boolean, default=True, nullable=False)
     is_superuser = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    birthday = Column(Date, nullable=True)
+    nationality = Column(String(100), nullable=True)
+    study_course = Column(String(255), nullable=True)
+    study_group = Column(String(100), nullable=True)
+    phone = Column(String(32), nullable=True)
+    social_links = Column(Text, nullable=True)
 
     courses = relationship("Course", back_populates="teacher", cascade="all, delete-orphan")
     attendances = relationship("Attendance", back_populates="student", cascade="all, delete-orphan")

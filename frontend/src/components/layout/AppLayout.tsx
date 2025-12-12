@@ -1,173 +1,66 @@
-// import { Layout, Menu, Typography, Button } from "antd";
-// import { Outlet, useLocation, useNavigate } from "react-router-dom";
-// import { clearToken } from "../../api/auth";
-
-// const { Header, Content } = Layout;
-// const { Text } = Typography;
-
-// const menuItems = [
-//   { key: "/courses", label: "Курсы" },
-//   { key: "/attendance", label: "Посещаемость" },
-//   { key: "/feedback", label: "Фидбэк" },
-//   { key: "/export", label: "Экспорт" },
-// ];
-
-// export default function AppLayout() {
-//   const location = useLocation();
-//   const navigate = useNavigate();
-
-//   const selectedKey =
-//     menuItems.find((item) => location.pathname.startsWith(item.key))?.key ||
-//     "/courses";
-
-//   const handleMenuClick = (info: { key: string }) => {
-//     navigate(info.key);
-//   };
-
-//   const handleLogout = () => {
-//     clearToken();
-//     navigate("/login", { replace: true });
-//   };
-
-//   return (
-//     <Layout style={{ minHeight: "100vh", background: "#020617" }}>
-//       <Header
-//         style={{
-//           display: "flex",
-//           alignItems: "center",
-//           padding: "0 32px",
-//           background: "#020617",
-//           borderBottom: "1px solid #1f2937",
-//         }}
-//       >
-//         <div
-//           style={{
-//             display: "flex",
-//             alignItems: "center",
-//             marginRight: 32,
-//           }}
-//         >
-//           <Text
-//             style={{
-//               color: "#22c55e",
-//               fontSize: 24,
-//               fontWeight: 700,
-//               letterSpacing: 2,
-//             }}
-//           >
-//             ITAM
-//           </Text>
-//         </div>
-
-//         <Menu
-//           mode="horizontal"
-//           selectable
-//           selectedKeys={[selectedKey]}
-//           items={menuItems}
-//           onClick={handleMenuClick}
-//           style={{
-//             flex: 1,
-//             minWidth: 0,
-//             background: "transparent",
-//             borderBottom: "none",
-//           }}
-//           theme="dark"
-//         />
-
-//         <Button
-//           type="default"
-//           onClick={handleLogout}
-//           style={{
-//             marginLeft: 24,
-//             background: "#111827",
-//             borderColor: "#4b5563",
-//             color: "#e5e7eb",
-//           }}
-//         >
-//           Выйти
-//         </Button>
-//       </Header>
-
-//       <Content
-//         style={{
-//           padding: "24px 32px",
-//           background: "#020617",
-//         }}
-//       >
-//         <div
-//           style={{
-//             maxWidth: 1440,
-//             margin: "0 auto",
-//             background: "#020617",
-//           }}
-//         >
-//           <Outlet />
-//         </div>
-//       </Content>
-//     </Layout>
-//   );
-// }
-
-
-import { Layout, Menu, Typography, Button } from "antd";
+import { Layout, Menu, Button } from "antd";
+import type { MenuProps } from "antd";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
-import { clearToken } from "../../api/auth";
 
 const { Header, Content } = Layout;
-const { Text } = Typography;
 
-const menuItems = [
-  { key: "/courses", label: "Курсы" },
-  { key: "/attendance", label: "Посещаемость" },
-  { key: "/feedback", label: "Фидбэк" },
-  { key: "/export", label: "Экспорт" },
+type MenuItem = Required<MenuProps>["items"][number];
+
+function getItem(
+  label: React.ReactNode,
+  key: string,
+): MenuItem {
+  return {
+    key,
+    label,
+  } as MenuItem;
+}
+
+const menuItems: MenuItem[] = [
+  getItem("Курсы", "/courses"),
+  getItem("Посещаемость", "/attendance"),
+  getItem("Фидбэк", "/feedback"),
+  getItem("Экспорт", "/export"),
 ];
 
 export default function AppLayout() {
-  const location = useLocation();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const selectedKey =
-    menuItems.find((item) => location.pathname.startsWith(item.key))?.key ||
-    "/courses";
+    menuItems.find((item) => {
+      if (!item || typeof item.key !== "string") return false;
+      return location.pathname.startsWith(item.key);
+    })?.key?.toString() || "/courses";
 
-  const handleMenuClick = (info: { key: string }) => {
-    navigate(info.key);
+  const handleMenuClick: MenuProps["onClick"] = (e) => {
+    navigate(e.key);
   };
 
   const handleLogout = () => {
-    clearToken();
-    navigate("/login", { replace: true });
+    localStorage.removeItem("access_token");
+    navigate("/login");
   };
 
   return (
-    <Layout style={{ minHeight: "100vh", background: "#020617" }}>
+    <Layout style={{ minHeight: "100vh" }}>
       <Header
         style={{
           display: "flex",
           alignItems: "center",
-          padding: "0 32px",
+          paddingInline: 24,
           background: "#020617",
-          borderBottom: "1px solid #1f2937",
         }}
       >
         <div
           style={{
-            display: "flex",
-            alignItems: "center",
+            color: "#22c55e",
+            fontWeight: 700,
+            fontSize: 20,
             marginRight: 32,
           }}
         >
-          <Text
-            style={{
-              color: "#22c55e",
-              fontSize: 24,
-              fontWeight: 700,
-              letterSpacing: 2,
-            }}
-          >
-            ITAM
-          </Text>
+          ITAM
         </div>
 
         <Menu
@@ -185,27 +78,45 @@ export default function AppLayout() {
           theme="dark"
         />
 
-        <Button
-          type="default"
-          onClick={handleLogout}
+        <div
           style={{
+            display: "flex",
+            gap: 12,
             marginLeft: 24,
-            background: "#111827",
-            borderColor: "#4b5563",
-            color: "#e5e7eb",
           }}
         >
-          Выйти
-        </Button>
+          <Button
+            type="default"
+            onClick={() => navigate("/profile")}
+            style={{
+              background: "#111827",
+              borderColor: "#4b5563",
+              color: "#e5e7eb",
+            }}
+          >
+            Профиль
+          </Button>
+
+          <Button
+            type="default"
+            onClick={handleLogout}
+            style={{
+              background: "#111827",
+              borderColor: "#4b5563",
+              color: "#e5e7eb",
+            }}
+          >
+            Выйти
+          </Button>
+        </div>
       </Header>
 
       <Content
         style={{
-          padding: "24px 32px",
           background: "#020617",
+          color: "#e5e7eb",
         }}
       >
-        {/* БОЛЬШЕ НЕТ maxWidth: 1440 — таблицы и контент во всю ширину окна */}
         <Outlet />
       </Content>
     </Layout>
