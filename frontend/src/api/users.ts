@@ -47,3 +47,8 @@ export async function changePassword(
 ): Promise<void> {
   await api.post("/users/me/change-password", payload);
 }
+
+export async function getUsers(): Promise<User[]> {
+  const response = await api.get<User[]>("/users/");
+  return response.data;
+}

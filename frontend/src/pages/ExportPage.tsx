@@ -1,91 +1,154 @@
-import { useState } from "react";
-import { Button, DatePicker, Form, InputNumber, Select, Space, Typography } from "antd";
-import { getAttendance } from "../api/attendance";
-import dayjs from "dayjs";
+import { useEffect, useState } from "react";
+import {
+  Button,
+  DatePicker,
+  Select,
+  Space,
+  Typography,
+  message,
+} from "antd";
+import dayjs from "dayjs";  
 
-const { Title, Text } = Typography;
+import { exportAttendance } from "../api/export";
+import type { ExportFormat, ExportParams } from "../api/export";
+import { getCourses } from "../api/courses";
+import { getUsers } from "../api/users";
+
+const { Title } = Typography;
 const { RangePicker } = DatePicker;
 
-interface ExportFormValues {
-  course_id?: number;
-  lesson_id?: number;
-  student_id?: number;
-  range?: [dayjs.Dayjs, dayjs.Dayjs];
+interface Option {
+  value: number;
+  label: string;
 }
 
 export default function ExportPage() {
-  const [loading, setLoading] = useState(false);
-  const [count, setCount] = useState<number | null>(null);
+  const [courses, setCourses] = useState<Option[]>([]);
+  const [students, setStudents] = useState<Option[]>([]);
+  const [filters, setFilters] = useState<Omit<ExportParams, "response_format"> & { response_format: ExportFormat }>({
+    course_id: undefined,
+    student_id: undefined,
+    from_date: undefined,
+    to_date: undefined,
+    response_format: "csv",
+  });
 
-  const handleFinish = async (values: ExportFormValues) => {
-    setLoading(true);
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const [coursesData, usersData] = await Promise.all([
+          getCourses(),
+          getUsers()
+        ]);
+
+        setCourses(
+          coursesData.map((c) => ({
+            value: c.id,
+            label: c.name,
+          }))
+        );
+
+        setStudents(
+          usersData.map((u) => ({
+            value: u.id,
+            label: u.full_name || u.email,
+          }))
+        );
+      } catch {
+        message.error("Не удалось загрузить данные");
+      }
+    };
+    loadData();
+  }, []);
+
+  const handleExport = async () => {
     try {
-      const from_date =
-        values.range && values.range[0]
-          ? values.range[0].format("YYYY-MM-DD")
-          : undefined;
-      const to_date =
-        values.range && values.range[1]
-          ? values.range[1].format("YYYY-MM-DD")
-          : undefined;
+      // Clean up undefined values and format payload
+      const payload: ExportParams = {
+        response_format: filters.response_format,
+        ...(filters.course_id && { course_id: filters.course_id }),
+        ...(filters.student_id && { student_id: filters.student_id }),
+        ...(filters.from_date && { from_date: filters.from_date }),
+        ...(filters.to_date && { to_date: filters.to_date }),
+      };
 
-      const records = await getAttendance({
-        course_id: values.course_id,
-        lesson_id: values.lesson_id,
-        student_id: values.student_id,
-        from_date,
-        to_date,
-      });
-      setCount(records.length);
-    } finally {
-      setLoading(false);
+      const blob = await exportAttendance(payload);
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download =
+        filters.response_format === "csv"
+          ? "attendance.csv"
+          : "attendance.json";
+      link.click();
+      window.URL.revokeObjectURL(url);
+    } catch {
+      message.error("Ошибка при экспорте");
     }
   };
 
   return (
     <div style={{ padding: 24 }}>
-      <Space
-        direction="vertical"
-        size="large"
-        style={{ width: "100%" }}
-      >
-        <Title level={3} style={{ color: "#e5e7eb", margin: 0 }}>
-          Экспорт посещаемости
-        </Title>
+      <Space direction="vertical" size="large" style={{ width: "100%" }}>
+        <Title>Экспорт посещаемости</Title>
 
-        <Form<ExportFormValues> layout="vertical" onFinish={handleFinish}>
-          <Form.Item label={<span style={{ color: "#e5e7eb" }}>Курс</span>} name="course_id">
-            <Select
-              placeholder="Выберите курс"
-              allowClear
-              options={[]}
-            />
-          </Form.Item>
+        <Space direction="vertical" size="middle" style={{ width: "100%" }}>
+          <RangePicker
+            onChange={(_, dateStrings) => {
+              setFilters((prev) => ({
+                ...prev,
+                from_date: dateStrings[0] || undefined,
+                to_date: dateStrings[1] || undefined,
+              }));
+            }}
+          />
 
-          <Form.Item label={<span style={{ color: "#e5e7eb" }}>ID занятия</span>} name="lesson_id">
-            <InputNumber style={{ width: "100%" }} />
-          </Form.Item>
+          <Select
+            placeholder="Курс"
+            options={courses}
+            allowClear
+            style={{ width: 200 }}
+            onChange={(value) => {
+              setFilters((prev) => ({
+                ...prev,
+                course_id: value,
+              }));
+            }}
+          />
 
-          <Form.Item label={<span style={{ color: "#e5e7eb" }}>ID студента</span>} name="student_id">
-            <InputNumber style={{ width: "100%" }} />
-          </Form.Item>
+          <Select
+            placeholder="Студент"
+            options={students}
+            allowClear
+            style={{ width: 200 }}
+            onChange={(value) => {
+              setFilters((prev) => ({
+                ...prev,
+                student_id: value,
+              }));
+            }}
+          />
 
-          <Form.Item label={<span style={{ color: "#e5e7eb" }}>Диапазон дат</span>} name="range">
-            <RangePicker style={{ width: "100%" }} />
-          </Form.Item>
+          <Select
+            placeholder="Тип Данных"
+            defaultValue="csv"
+            options={[
+              { value: "csv", label: "CSV" },
+              { value: "json", label: "JSON" },
+            ]}
+            style={{ width: 120 }}
+            onChange={(value: ExportFormat) => {
+              setFilters((prev) => ({
+                ...prev,
+                response_format: value,
+              }));
+            }}
+          />
 
-          <Form.Item>
-            <Button type="primary" htmlType="submit" loading={loading}>
-              Получить данные
-            </Button>
-          </Form.Item>
-        </Form>
-
-        {count !== null && (
-          <Text style={{ color: "#e5e7eb" }}>
-            Найдено записей: {count}
-          </Text>
-        )}
+          <Button type="primary" onClick={handleExport}>
+            Скачать
+          </Button>
+        </Space>
       </Space>
     </div>
   );

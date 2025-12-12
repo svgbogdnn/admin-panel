@@ -1,8 +1,10 @@
 from datetime import date
-from typing import List, Optional
-
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query, Response
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
+import csv
+import io
+import json
 
 from app.core.db import get_db
 from app.core.security import get_current_user
@@ -14,28 +16,63 @@ from app.schemas.attendance import AttendanceRead
 router = APIRouter(prefix="/export", tags=["export"])
 
 
-@router.get("/attendance", response_model=List[AttendanceRead])
+@router.get("/attendance")
 def export_attendance(
-    course_id: Optional[int] = None,
-    lesson_id: Optional[int] = None,
-    student_id: Optional[int] = None,
-    from_date: Optional[date] = None,
-    to_date: Optional[date] = None,
+    response_format: str = Query(..., regex="^(csv|json)$"),
+    course_id: int = Query(None),
+    student_id: int = Query(None),
+    from_date: date = Query(None),
+    to_date: date = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-) -> List[AttendanceRead]:
-    query = db.query(Attendance)
-    if lesson_id is not None:
-        query = query.filter(Attendance.lesson_id == lesson_id)
+):
+    query = db.query(Attendance).join(User).join(Lesson)
+
+    if course_id is not None:
+        query = query.filter(Lesson.course_id == course_id)
     if student_id is not None:
         query = query.filter(Attendance.student_id == student_id)
-    if course_id is not None or from_date is not None or to_date is not None:
-        query = query.join(Lesson, Attendance.lesson_id == Lesson.id)
-        if course_id is not None:
-            query = query.filter(Lesson.course_id == course_id)
-        if from_date is not None:
-            query = query.filter(Lesson.date >= from_date)
-        if to_date is not None:
-            query = query.filter(Lesson.date <= to_date)
+    if from_date is not None:
+        query = query.filter(Lesson.date >= from_date)
+    if to_date is not None:
+        query = query.filter(Lesson.date <= to_date)
+
     records = query.all()
-    return records
+
+    if response_format == "json":
+        out = []
+        for r in records:
+            out.append({
+                "ФИО студента": r.student.full_name or r.student.email,
+                "Курс": r.lesson.course.name if r.lesson and r.lesson.course else "",
+                "Дата занятия": str(r.lesson.date) if r.lesson else "",
+                "Статус": r.status.value
+            })
+        return out
+
+    # CSV формат:
+    stream = io.StringIO()
+    writer = csv.writer(stream)
+    writer.writerow([
+        "ФИО студента",
+        "Курс",
+        "Дата занятия",
+        "Статус"
+    ])
+
+    for r in records:
+        writer.writerow([
+            r.student.full_name or r.student.email,
+            r.lesson.course.name if r.lesson and r.lesson.course else "",
+            r.lesson.date.isoformat() if r.lesson else "",
+            r.status.value
+        ])
+
+    stream.seek(0)
+    return StreamingResponse(
+        iter([stream.getvalue()]),
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": "attachment; filename=attendance_export.csv"
+        }
+    )
