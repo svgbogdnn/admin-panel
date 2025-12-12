@@ -8,6 +8,10 @@ export interface Feedback {
   comment?: string | null;
   is_hidden: boolean;
   created_at: string;
+  student_name?: string | null;
+  course_name?: string | null;
+  lesson_topic?: string | null;
+  lesson_date?: string | null;
 }
 
 export interface FeedbackCreate {

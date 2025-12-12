@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, date
 from typing import Optional
 
 from pydantic import BaseModel, confloat
@@ -25,6 +25,10 @@ class FeedbackUpdate(BaseModel):
 class FeedbackRead(FeedbackBase):
     id: int
     created_at: datetime
+    student_name: Optional[str] = None
+    course_name: Optional[str] = None
+    lesson_topic: Optional[str] = None
+    lesson_date: Optional[date] = None
 
     class Config:
         from_attributes = True
