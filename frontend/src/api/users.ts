@@ -16,13 +16,13 @@ export interface User {
 }
 
 export interface UserProfileUpdate {
-  full_name?: string;
-  birthday?: string;
-  nationality?: string;
-  study_course?: string;
-  study_group?: string;
-  phone?: string;
-  social_links?: string;
+  full_name?: string | null;
+  birthday?: string | null;
+  nationality?: string | null;
+  study_course?: string | null;
+  study_group?: string | null;
+  phone?: string | null;
+  social_links?: string | null;
 }
 
 export interface PasswordChangePayload {
@@ -46,9 +46,4 @@ export async function changePassword(
   payload: PasswordChangePayload,
 ): Promise<void> {
   await api.post("/users/me/change-password", payload);
-}
-
-export async function getUsers(): Promise<User[]> {
-  const response = await api.get<User[]>("/users/");
-  return response.data;
 }

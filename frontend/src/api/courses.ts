@@ -10,17 +10,15 @@ export interface Course {
   updated_at: string;
 }
 
-// Тело для создания
 export interface CourseCreatePayload {
   name: string;
   description?: string;
-  start_date?: string; // формат "YYYY-MM-DD"
+  start_date?: string;
   end_date?: string;
   is_active?: boolean;
   teacher_id?: number;
 }
 
-// Тело для обновления (все поля опциональны)
 export type CourseUpdatePayload = Partial<CourseCreatePayload>;
 
 const API_URL =
@@ -42,7 +40,8 @@ export async function getCourses(params?: {
     query.append("is_active", String(params.is_active));
   }
 
-  const res = await fetch(`${API_URL}/courses/?${query.toString()}`, {
+  const qs = query.toString();
+  const res = await fetch(`${API_URL}/courses${qs ? `?${qs}` : ""}`, {
     method: "GET",
     headers: authHeaders(),
   });
@@ -61,16 +60,14 @@ export async function getCourse(id: number): Promise<Course> {
   });
 
   if (!res.ok) {
-    throw new Error("Курс не найден");
+    throw new Error("Не удалось загрузить курс");
   }
 
   return res.json();
 }
 
-export async function createCourse(
-  payload: CourseCreatePayload,
-): Promise<Course> {
-  const res = await fetch(`${API_URL}/courses/`, {
+export async function createCourse(payload: CourseCreatePayload): Promise<Course> {
+  const res = await fetch(`${API_URL}/courses`, {
     method: "POST",
     headers: authHeaders(),
     body: JSON.stringify(payload),

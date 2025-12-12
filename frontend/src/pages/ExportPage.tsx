@@ -1,154 +1,229 @@
-import { useEffect, useState } from "react";
-import {
-  Button,
-  DatePicker,
-  Select,
-  Space,
-  Typography,
-  message,
-} from "antd";
-import dayjs from "dayjs";  
+import { useEffect, useMemo, useState } from "react";
+import { Button, DatePicker, Form, InputNumber, Select, Space, Typography, message } from "antd";
+import dayjs from "dayjs";
+import { getAttendance, type AttendanceRecord } from "../api/attendance";
+import { getCourses, type Course } from "../api/courses";
 
-import { exportAttendance } from "../api/export";
-import type { ExportFormat, ExportParams } from "../api/export";
-import { getCourses } from "../api/courses";
-import { getUsers } from "../api/users";
-
-const { Title } = Typography;
+const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
 
-interface Option {
-  value: number;
-  label: string;
+type ExportType = "csv" | "json";
+
+interface ExportFormValues {
+  course_id?: number;
+  lesson_id?: number;
+  student_id?: number;
+  range?: [dayjs.Dayjs, dayjs.Dayjs];
+  export_type: ExportType;
+}
+
+type SelectOption = { value: number; label: string };
+
+function escapeCsvValue(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  const s = String(value);
+  const needsQuotes = /[",\n\r]/.test(s);
+  const escaped = s.replace(/"/g, '""');
+  return needsQuotes ? `"${escaped}"` : escaped;
+}
+
+function buildCsv(rows: Record<string, unknown>[], headers: { key: string; label: string }[]): string {
+  const head = headers.map((h) => escapeCsvValue(h.label)).join(",");
+  const lines = rows.map((row) => headers.map((h) => escapeCsvValue(row[h.key])).join(","));
+  return [head, ...lines].join("\r\n");
+}
+
+function downloadTextFile(filename: string, content: string, mime: string) {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 export default function ExportPage() {
-  const [courses, setCourses] = useState<Option[]>([]);
-  const [students, setStudents] = useState<Option[]>([]);
-  const [filters, setFilters] = useState<Omit<ExportParams, "response_format"> & { response_format: ExportFormat }>({
-    course_id: undefined,
-    student_id: undefined,
-    from_date: undefined,
-    to_date: undefined,
-    response_format: "csv",
-  });
+  const [form] = Form.useForm<ExportFormValues>();
+  const [loading, setLoading] = useState(false);
+  const [count, setCount] = useState<number | null>(null);
+  const [coursesLoading, setCoursesLoading] = useState(false);
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [studentsLoading, setStudentsLoading] = useState(false);
+  const [students, setStudents] = useState<SelectOption[]>([]);
+  const [lastRecords, setLastRecords] = useState<AttendanceRecord[] | null>(null);
 
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        const [coursesData, usersData] = await Promise.all([
-          getCourses(),
-          getUsers()
-        ]);
+  const courseId = Form.useWatch("course_id", form);
 
-        setCourses(
-          coursesData.map((c) => ({
-            value: c.id,
-            label: c.name,
-          }))
-        );
+  const courseNameById = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const c of courses) map.set(c.id, c.name);
+    return map;
+  }, [courses]);
 
-        setStudents(
-          usersData.map((u) => ({
-            value: u.id,
-            label: u.full_name || u.email,
-          }))
-        );
-      } catch {
-        message.error("Не удалось загрузить данные");
-      }
-    };
-    loadData();
-  }, []);
-
-  const handleExport = async () => {
+  const loadCourses = async () => {
+    setCoursesLoading(true);
     try {
-      // Clean up undefined values and format payload
-      const payload: ExportParams = {
-        response_format: filters.response_format,
-        ...(filters.course_id && { course_id: filters.course_id }),
-        ...(filters.student_id && { student_id: filters.student_id }),
-        ...(filters.from_date && { from_date: filters.from_date }),
-        ...(filters.to_date && { to_date: filters.to_date }),
-      };
-
-      const blob = await exportAttendance(payload);
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download =
-        filters.response_format === "csv"
-          ? "attendance.csv"
-          : "attendance.json";
-      link.click();
-      window.URL.revokeObjectURL(url);
+      const data = await getCourses();
+      setCourses(data);
     } catch {
-      message.error("Ошибка при экспорте");
+      message.error("Не удалось загрузить курсы");
+    } finally {
+      setCoursesLoading(false);
     }
   };
+
+  const loadStudentsFromAttendance = async (selectedCourseId?: number) => {
+    setStudentsLoading(true);
+    try {
+      const records = await getAttendance(selectedCourseId ? { course_id: selectedCourseId } : undefined);
+      const map = new Map<number, string>();
+      for (const r of records) {
+        if (r.student_id === undefined || r.student_id === null) continue;
+        const name = (r.student_name ?? "").trim();
+        map.set(r.student_id, name.length > 0 ? name : String(r.student_id));
+      }
+      const options = Array.from(map.entries())
+        .map(([value, label]) => ({ value, label }))
+        .sort((a, b) => a.label.localeCompare(b.label, "ru"));
+      setStudents(options);
+    } catch {
+      setStudents([]);
+    } finally {
+      setStudentsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadCourses();
+    form.setFieldsValue({ export_type: "csv" });
+  }, []);
+
+  useEffect(() => {
+    form.setFieldValue("student_id", undefined);
+    const id = typeof courseId === "number" ? courseId : undefined;
+    loadStudentsFromAttendance(id);
+  }, [courseId]);
+
+  const handleFinish = async (values: ExportFormValues) => {
+    setLoading(true);
+    try {
+      const from_date = values.range && values.range[0] ? values.range[0].format("YYYY-MM-DD") : undefined;
+      const to_date = values.range && values.range[1] ? values.range[1].format("YYYY-MM-DD") : undefined;
+
+      const records = await getAttendance({
+        course_id: values.course_id,
+        lesson_id: values.lesson_id,
+        student_id: values.student_id,
+        from_date,
+        to_date,
+      });
+
+      setLastRecords(records);
+      setCount(records.length);
+
+      const rows = records.map((r) => ({
+        course_name: r.course_name ?? (values.course_id ? courseNameById.get(values.course_id) ?? "" : ""),
+        lesson_date: r.lesson_date ?? "",
+        lesson_id: r.lesson_id ?? "",
+        student_name: r.student_name ?? "",
+        status: r.status ?? "",
+        comment: r.comment ?? "",
+      }));
+
+      const stamp = dayjs().format("YYYYMMDD_HHmmss");
+
+      if (values.export_type === "csv") {
+        const headers = [
+          { key: "course_name", label: "Курс" },
+          { key: "lesson_date", label: "Дата занятия" },
+          { key: "lesson_id", label: "ID занятия" },
+          { key: "student_name", label: "ФИО студента" },
+          { key: "status", label: "Статус" },
+          { key: "comment", label: "Комментарий" },
+        ];
+        const csv = "\ufeff" + buildCsv(rows, headers);
+        downloadTextFile(`attendance_export_${stamp}.csv`, csv, "text/csv;charset=utf-8");
+      } else {
+        const json = JSON.stringify(rows, null, 2);
+        downloadTextFile(`attendance_export_${stamp}.json`, json, "application/json;charset=utf-8");
+      }
+    } catch {
+      message.error("Не удалось выгрузить посещаемость");
+      setLastRecords(null);
+      setCount(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const courseOptions = useMemo(() => courses.map((c) => ({ value: c.id, label: c.name })), [courses]);
 
   return (
     <div style={{ padding: 24 }}>
       <Space direction="vertical" size="large" style={{ width: "100%" }}>
-        <Title>Экспорт посещаемости</Title>
+        <Title level={3} style={{ color: "#e5e7eb", margin: 0 }}>
+          Экспорт посещаемости
+        </Title>
 
-        <Space direction="vertical" size="middle" style={{ width: "100%" }}>
-          <RangePicker
-            onChange={(_, dateStrings) => {
-              setFilters((prev) => ({
-                ...prev,
-                from_date: dateStrings[0] || undefined,
-                to_date: dateStrings[1] || undefined,
-              }));
-            }}
-          />
+        <Form<ExportFormValues> form={form} layout="vertical" onFinish={handleFinish} initialValues={{ export_type: "csv" }}>
+          <Form.Item label={<span style={{ color: "#e5e7eb" }}>Курс</span>} name="course_id">
+            <Select
+              placeholder="Выберите курс"
+              allowClear
+              loading={coursesLoading}
+              options={courseOptions}
+              showSearch
+              optionFilterProp="label"
+            />
+          </Form.Item>
 
-          <Select
-            placeholder="Курс"
-            options={courses}
-            allowClear
-            style={{ width: 200 }}
-            onChange={(value) => {
-              setFilters((prev) => ({
-                ...prev,
-                course_id: value,
-              }));
-            }}
-          />
+          <Form.Item label={<span style={{ color: "#e5e7eb" }}>ID занятия</span>} name="lesson_id">
+            <InputNumber style={{ width: "100%" }} min={1} />
+          </Form.Item>
 
-          <Select
-            placeholder="Студент"
-            options={students}
-            allowClear
-            style={{ width: 200 }}
-            onChange={(value) => {
-              setFilters((prev) => ({
-                ...prev,
-                student_id: value,
-              }));
-            }}
-          />
+          <Form.Item label={<span style={{ color: "#e5e7eb" }}>ФИО студента</span>} name="student_id">
+            <Select
+              placeholder="Выберите студента"
+              allowClear
+              loading={studentsLoading}
+              options={students}
+              showSearch
+              optionFilterProp="label"
+            />
+          </Form.Item>
 
-          <Select
-            placeholder="Тип Данных"
-            defaultValue="csv"
-            options={[
-              { value: "csv", label: "CSV" },
-              { value: "json", label: "JSON" },
-            ]}
-            style={{ width: 120 }}
-            onChange={(value: ExportFormat) => {
-              setFilters((prev) => ({
-                ...prev,
-                response_format: value,
-              }));
-            }}
-          />
+          <Form.Item label={<span style={{ color: "#e5e7eb" }}>Диапазон дат</span>} name="range">
+            <RangePicker style={{ width: "100%" }} />
+          </Form.Item>
 
-          <Button type="primary" onClick={handleExport}>
-            Скачать
-          </Button>
-        </Space>
+          <Form.Item
+            label={<span style={{ color: "#e5e7eb" }}>Тип данных</span>}
+            name="export_type"
+            rules={[{ required: true, message: "Выберите тип данных" }]}
+          >
+            <Select
+              options={[
+                { value: "csv", label: "CSV" },
+                { value: "json", label: "JSON" },
+              ]}
+            />
+          </Form.Item>
+
+          <Form.Item>
+            <Button type="primary" htmlType="submit" loading={loading}>
+              Скачать
+            </Button>
+          </Form.Item>
+        </Form>
+
+        {count !== null && <Text style={{ color: "#e5e7eb" }}>Найдено записей: {count}</Text>}
+
+        {lastRecords && lastRecords.length === 0 && (
+          <Text style={{ color: "#e5e7eb" }}>По выбранным фильтрам нет данных</Text>
+        )}
       </Space>
     </div>
   );

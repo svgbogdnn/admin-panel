@@ -13,28 +13,6 @@ from app.schemas.feedback import FeedbackCreate, FeedbackRead, FeedbackUpdate
 router = APIRouter(prefix="/feedback", tags=["feedback"])
 
 
-def enrich_feedback(item: Feedback) -> Feedback:
-    student = item.student
-    lesson = item.lesson
-    if student is not None:
-        item.student_name = student.full_name or student.email
-    else:
-        item.student_name = None
-    if lesson is not None:
-        item.lesson_topic = lesson.topic
-        item.lesson_date = lesson.date
-        course = lesson.course
-        if course is not None:
-            item.course_name = course.name
-        else:
-            item.course_name = None
-    else:
-        item.lesson_topic = None
-        item.lesson_date = None
-        item.course_name = None
-    return item
-
-
 @router.get("/", response_model=List[FeedbackRead])
 def list_feedback(
     lesson_id: Optional[int] = None,
@@ -55,7 +33,7 @@ def list_feedback(
     if not include_hidden:
         query = query.filter(Feedback.is_hidden.is_(False))
     items = query.order_by(Feedback.created_at.desc()).all()
-    return [enrich_feedback(item) for item in items]
+    return items
 
 
 @router.get("/{feedback_id}", response_model=FeedbackRead)
@@ -70,7 +48,7 @@ def get_feedback(
     ).get(feedback_id)
     if not item:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Feedback not found")
-    return enrich_feedback(item)
+    return item
 
 
 @router.post("/", response_model=FeedbackRead, status_code=status.HTTP_201_CREATED)
@@ -89,7 +67,7 @@ def create_feedback(
     db.add(item)
     db.commit()
     db.refresh(item)
-    return enrich_feedback(item)
+    return item
 
 
 @router.patch("/{feedback_id}", response_model=FeedbackRead)
@@ -114,7 +92,7 @@ def update_feedback(
     db.add(item)
     db.commit()
     db.refresh(item)
-    return enrich_feedback(item)
+    return item
 
 
 @router.delete("/{feedback_id}", status_code=status.HTTP_204_NO_CONTENT)
