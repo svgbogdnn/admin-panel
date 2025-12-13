@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
-from app.core.security import get_current_user
+from app.core.security import get_current_user, check_course_owner
 from app.models.lesson import Lesson
 from app.models.user import User
 from app.schemas.lesson import LessonCreate, LessonRead, LessonUpdate
@@ -50,6 +50,13 @@ def create_lesson(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> LessonRead:
+    # Check permission: admin or owner of the course
+    if not check_course_owner(current_user, lesson_in.course_id, db):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have permission to create lessons for this course",
+        )
+    
     lesson = Lesson(
         course_id=lesson_in.course_id,
         topic=lesson_in.topic,
@@ -74,6 +81,14 @@ def update_lesson(
     lesson = db.get(Lesson, lesson_id)
     if not lesson:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lesson not found")
+    
+    # Check permission: admin or owner of the lesson's course
+    if not check_course_owner(current_user, lesson.course_id, db):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have permission to edit this lesson",
+        )
+    
     if lesson_in.topic is not None:
         lesson.topic = lesson_in.topic
     if lesson_in.date is not None:
@@ -99,5 +114,13 @@ def delete_lesson(
     lesson = db.get(Lesson, lesson_id)
     if not lesson:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lesson not found")
+    
+    # Check permission: admin or owner of the lesson's course
+    if not check_course_owner(current_user, lesson.course_id, db):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have permission to delete this lesson",
+        )
+    
     db.delete(lesson)
     db.commit()

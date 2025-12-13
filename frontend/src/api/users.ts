@@ -13,6 +13,7 @@ export interface User {
   study_group?: string | null;
   phone?: string | null;
   social_links?: string | null;
+  role: "admin" | "teacher" | "student";
 }
 
 export interface UserProfileUpdate {

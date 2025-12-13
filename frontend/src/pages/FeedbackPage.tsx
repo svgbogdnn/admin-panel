@@ -19,6 +19,7 @@ import type { Course } from "../api/courses";
 import { getCourses } from "../api/courses";
 import type { Lesson } from "../api/lessons";
 import { getLessons } from "../api/lessons";
+import { useAuth } from "../context/AuthContext";
 
 const { Title, Text } = Typography;
 
@@ -43,6 +44,10 @@ export default function FeedbackPage() {
   const [lessonOptions, setLessonOptions] = useState<LessonOption[]>([]);
   const [selectedCourseId, setSelectedCourseId] = useState<number | undefined>();
   const [form] = Form.useForm<FeedbackCreate & { student_id_input: number }>();
+
+  const { user, role } = useAuth();
+  // const isTeacher = role === "teacher";
+  const isAdmin = role === "admin";
 
   useEffect(() => {
     const load = async () => {
@@ -106,11 +111,19 @@ export default function FeedbackPage() {
       const values = await form.validateFields();
       const payload: FeedbackCreate = {
         lesson_id: values.lesson_id,
-        student_id: values.student_id,
+        // If user is student, they might not have filled student_id (it's hidden/autofilled).
+        // If user is admin, they filled it.
+        // We fallback to user.id if not present.
+        student_id: values.student_id ?? user?.id,
         rating: values.rating,
         comment: values.comment,
         is_hidden: values.is_hidden ?? false,
       };
+
+      if (!payload.student_id) {
+        message.error("Ошибка: не удалось определить ID студента");
+        return;
+      }
       setCreating(true);
       const created = await createFeedbackItem(payload);
       setItems((prev) => [created, ...prev]);
@@ -212,13 +225,15 @@ export default function FeedbackPage() {
           layout="vertical"
           initialValues={{ rating: 5, is_hidden: false }}
         >
-          <Form.Item
-            label="Студент ID"
-            name="student_id"
-            rules={[{ required: true, message: "Укажите ID студента" }]}
-          >
-            <InputNumber style={{ width: "100%" }} min={1} />
-          </Form.Item>
+          {isAdmin && (
+            <Form.Item
+              label="Студент ID"
+              name="student_id"
+              rules={[{ required: true, message: "Укажите ID студента" }]}
+            >
+              <InputNumber style={{ width: "100%" }} min={1} />
+            </Form.Item>
+          )}
 
           <Form.Item
             label="Курс"

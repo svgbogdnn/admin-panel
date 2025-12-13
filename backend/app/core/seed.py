@@ -1,15 +1,17 @@
 from datetime import date, time
 
-from app.core.db import SessionLocal
+from app.core.db import Base, SessionLocal, engine
 from app.core.security import get_password_hash
-from app.models.user import User
-from app.models.course import Course
-from app.models.lesson import Lesson
 from app.models.attendance import Attendance, AttendanceStatus
+from app.models.course import Course
 from app.models.feedback import Feedback
+from app.models.lesson import Lesson
+from app.models.user import User
 
 
 def run_seed() -> None:
+    Base.metadata.create_all(bind=engine)
+
     db = SessionLocal()
     try:
         db.query(Attendance).delete()
@@ -86,28 +88,35 @@ def run_seed() -> None:
 
         teachers = []
         for data in teachers_data:
-            user = User(
-                email=data["email"],
-                full_name=data["full_name"],
-                hashed_password=get_password_hash(data["password"]),
-                is_active=True,
-                is_superuser=data["is_superuser"],
-            )
-            db.add(user)
-            db.flush()
+            user = db.query(User).filter(User.email == data["email"]).first()
+            if not user:
+                user = User(
+                    email=data["email"],
+                    full_name=data["full_name"],
+                    hashed_password=get_password_hash(data["password"]),
+                    is_active=True,
+                    is_superuser=data["is_superuser"],
+                )
+                db.add(user)
+                db.flush()
+
             teachers.append(user)
+            print(f"Added teacher: {user.email} -> ID: {user.id}")
+
 
         students = []
         for data in students_data:
-            user = User(
-                email=data["email"],
-                full_name=data["full_name"],
-                hashed_password=get_password_hash(data["password"]),
-                is_active=True,
-                is_superuser=False,
-            )
-            db.add(user)
-            db.flush()
+            user = db.query(User).filter(User.email == data["email"]).first()
+            if not user:
+                user = User(
+                    email=data["email"],
+                    full_name=data["full_name"],
+                    hashed_password=get_password_hash(data["password"]),
+                    is_active=True,
+                    is_superuser=False,
+                )
+                db.add(user)
+                db.flush()
             students.append(user)
 
         db.commit()
@@ -118,35 +127,35 @@ def run_seed() -> None:
                 "description": "Базовый курс по синтаксису Python, типам данных и функциям. Подходит для полного нуля.",
                 "start_date": date(2024, 9, 1),
                 "end_date": date(2024, 12, 1),
-                "teacher": teachers[0],
+                "teacher": teachers[2],
             },
             {
                 "name": "Алгоритмы и структуры данных",
                 "description": "Списки, стеки, очереди, деревья и базовые алгоритмы сортировки и поиска.",
                 "start_date": date(2024, 9, 2),
                 "end_date": date(2024, 12, 2),
-                "teacher": teachers[0],
+                "teacher": teachers[2],
             },
             {
                 "name": "Веб-разработка: HTML, CSS, JS",
                 "description": "Основы создания веб-интерфейсов, верстка и базовый JavaScript.",
                 "start_date": date(2024, 9, 3),
                 "end_date": date(2024, 12, 3),
-                "teacher": teachers[1],
+                "teacher": teachers[3],
             },
             {
                 "name": "FastAPI для бэкенда",
                 "description": "Создание API, работа с БД через SQLAlchemy, авторизация и документация.",
                 "start_date": date(2024, 9, 4),
                 "end_date": date(2024, 12, 4),
-                "teacher": teachers[1],
+                "teacher": teachers[3],
             },
             {
                 "name": "Базы данных и SQL",
                 "description": "Проектирование схемы, JOIN-ы, индексы и оптимизация запросов.",
                 "start_date": date(2024, 9, 5),
                 "end_date": date(2024, 12, 5),
-                "teacher": teachers[1],
+                "teacher": teachers[3],
             },
             {
                 "name": "Git и командная разработка",
@@ -174,14 +183,14 @@ def run_seed() -> None:
                 "description": "Линейная регрессия, классификация, подготовка данных и метрики качества.",
                 "start_date": date(2024, 9, 9),
                 "end_date": date(2024, 12, 9),
-                "teacher": teachers[0],
+                "teacher": teachers[2],
             },
             {
                 "name": "Продвинутый Python",
                 "description": "Генераторы, декораторы, контекстные менеджеры и асинхронность.",
                 "start_date": date(2024, 9, 10),
                 "end_date": date(2024, 12, 10),
-                "teacher": teachers[1],
+                "teacher": teachers[3],
             },
         ]
 

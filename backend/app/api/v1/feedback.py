@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.db import get_db
-from app.core.security import get_current_user
+from app.core.security import get_current_user, require_admin, is_teacher
 from app.models.feedback import Feedback
 from app.models.lesson import Lesson
 from app.models.user import User
@@ -57,12 +57,37 @@ def create_feedback(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> FeedbackRead:
+    # Only students can create feedback (not teachers or admins)
+    # Admin can create for management purposes
+    # Verify lesson exists
+    lesson = db.get(Lesson, feedback_in.lesson_id)
+    if not lesson:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Lesson not found",
+        )
+
+    if not current_user.is_superuser:
+        # Check if user is the teacher of this course
+        if lesson.course.teacher_id == current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Teachers cannot leave feedback on their own courses.",
+            )
+            
+        # Students can only create feedback for themselves
+        if feedback_in.student_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You can only write feedback for yourself.",
+            )
+    
     item = Feedback(
         lesson_id=feedback_in.lesson_id,
         student_id=feedback_in.student_id,
         rating=feedback_in.rating,
         comment=feedback_in.comment,
-        is_hidden=feedback_in.is_hidden,
+        is_hidden=feedback_in.is_hidden if current_user.is_superuser else False,
     )
     db.add(item)
     db.commit()
@@ -83,11 +108,20 @@ def update_feedback(
     ).get(feedback_id)
     if not item:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Feedback not found")
+    
+    # Only admin or the student who wrote the feedback can update it
+    if not current_user.is_superuser and item.student_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only edit your own feedback.",
+        )
+    
     if feedback_in.rating is not None:
         item.rating = feedback_in.rating
     if feedback_in.comment is not None:
         item.comment = feedback_in.comment
-    if feedback_in.is_hidden is not None:
+    # Only admin can change is_hidden
+    if feedback_in.is_hidden is not None and current_user.is_superuser:
         item.is_hidden = feedback_in.is_hidden
     db.add(item)
     db.commit()
@@ -99,7 +133,7 @@ def update_feedback(
 def delete_feedback(
     feedback_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_admin),  # Admin only
 ) -> None:
     item = db.get(Feedback, feedback_id)
     if not item:

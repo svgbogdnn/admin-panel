@@ -1,6 +1,6 @@
 // frontend/src/pages/CourseCreatePage.tsx
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Button,
@@ -13,6 +13,7 @@ import {
   message,
 } from "antd";
 import { createCourse, type CourseCreatePayload } from "../api/courses";
+import { useAuth } from "../context/AuthContext";
 
 const { Title } = Typography;
 
@@ -20,6 +21,16 @@ export default function CourseCreatePage() {
   const navigate = useNavigate();
   const [submitting, setSubmitting] = useState(false);
   const [form] = Form.useForm<CourseCreatePayload>();
+
+  const { role } = useAuth();
+  const canCreate = role === "admin" || role === "teacher";
+
+  useEffect(() => {
+    if (role && !canCreate) {
+      message.error("У вас нет прав для создания курса");
+      navigate("/courses");
+    }
+  }, [role, canCreate, navigate]);
 
   const onFinish = async (values: CourseCreatePayload) => {
     setSubmitting(true);

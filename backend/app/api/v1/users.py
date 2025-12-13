@@ -43,9 +43,14 @@ class PasswordChange(BaseModel):
 
 @router.get("/me", response_model=UserRead)
 def read_me(
+    db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> UserRead:
-    return current_user
+    from app.core.security import get_role
+    role = get_role(current_user, db)
+    user_data = UserRead.model_validate(current_user)
+    user_data.role = role
+    return user_data
 
 
 @router.patch("/me", response_model=UserRead)

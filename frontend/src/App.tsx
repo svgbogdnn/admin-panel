@@ -1,6 +1,7 @@
 import { BrowserRouter } from "react-router-dom";
 import { ConfigProvider, theme } from "antd";
 import AppRouter from "./router";
+import { AuthProvider } from "./context/AuthContext";
 
 export default function App() {
   return (
@@ -15,7 +16,9 @@ export default function App() {
       }}
     >
       <BrowserRouter>
-        <AppRouter />
+        <AuthProvider>
+          <AppRouter />
+        </AuthProvider>
       </BrowserRouter>
     </ConfigProvider>
   );

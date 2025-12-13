@@ -94,6 +94,7 @@ import { Button, Space, Table, Tag, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { useNavigate } from "react-router-dom";
 import { type Course, getCourses } from "../api/courses";
+import { useAuth } from "../context/AuthContext";
 
 const { Title } = Typography;
 
@@ -101,6 +102,12 @@ export default function CoursesPage() {
   const [courses, setCourses] = useState<Course[]>([]);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const { user, role } = useAuth();
+
+  const isAdmin = role === "admin";
+  const isTeacher = role === "teacher";
+  // Allow ALL users to create courses as requested
+  const canCreateCourse = true;
 
   useEffect(() => {
     const load = async () => {
@@ -114,6 +121,13 @@ export default function CoursesPage() {
     };
     load();
   }, []);
+
+  // Check if current user can edit this course (admin or course owner)
+  const canEditCourse = (course: Course): boolean => {
+    if (isAdmin) return true;
+    if (isTeacher && user && course.teacher_id === user.id) return true;
+    return false;
+  };
 
   const columns: ColumnsType<Course> = [
     {
@@ -157,12 +171,14 @@ export default function CoursesPage() {
           >
             Подробнее
           </Button>
-          <Button
-            type="link"
-            onClick={() => navigate(`/courses/${record.id}/edit`)}
-          >
-            Редактировать
-          </Button>
+          {canEditCourse(record) && (
+            <Button
+              type="link"
+              onClick={() => navigate(`/courses/${record.id}/edit`)}
+            >
+              Редактировать
+            </Button>
+          )}
         </Space>
       ),
     },
@@ -176,9 +192,11 @@ export default function CoursesPage() {
         <Title level={3} style={{ color: "#e5e7eb", margin: 0 }}>
           Курсы
         </Title>
-        <Button type="primary" onClick={() => navigate("/courses/new")}>
-          Добавить курс
-        </Button>
+        {canCreateCourse && (
+          <Button type="primary" onClick={() => navigate("/courses/new")}>
+            Добавить курс
+          </Button>
+        )}
       </Space>
 
       <Table<Course>

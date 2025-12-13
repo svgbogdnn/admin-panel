@@ -127,3 +127,60 @@ async def get_current_user(
     if user is None or not user.is_active:
         raise credentials_exception
     return user
+
+
+# ============ RBAC Helper Functions ============
+
+def is_teacher(user: User, db: Session) -> bool:
+    """Check if user is a teacher (owns at least one course or has teacher email)."""
+    # Allow bootstrapping: if email starts with "teacher.", they are a teacher.
+    # Allow bootstrapping: if email starts with "teacher.", they are a teacher.
+    if user.email and user.email.startswith("teacher."):
+        return True
+    
+    return False
+
+
+def get_role(user: User, db: Session) -> str:
+    """Get user role: 'admin', 'teacher', or 'student'."""
+    if user.is_superuser:
+        return "admin"
+    if is_teacher(user, db):
+        return "teacher"
+    return "student"
+
+
+def require_admin(current_user: User = Depends(get_current_user)) -> User:
+    """Dependency that requires the user to be an admin (superuser)."""
+    if not current_user.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required",
+        )
+    return current_user
+
+
+def require_admin_or_teacher(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> User:
+    """Dependency that requires the user to be an admin or teacher."""
+    if current_user.is_superuser:
+        return current_user
+    if is_teacher(current_user, db):
+        return current_user
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Admin or teacher access required",
+    )
+
+
+def check_course_owner(user: User, course_id: int, db: Session) -> bool:
+    """Check if user is admin or owner of the specified course."""
+    if user.is_superuser:
+        return True
+    from app.models.course import Course
+    course = db.get(Course, course_id)
+    if course is None:
+        return False
+    return course.teacher_id == user.id

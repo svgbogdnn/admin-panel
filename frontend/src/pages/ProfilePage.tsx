@@ -148,10 +148,12 @@ export default function ProfilePage() {
                     {user.email}
                   </Descriptions.Item>
                   <Descriptions.Item label="Роль">
-                    {user.is_superuser ? (
+                    {user.role === "admin" ? (
                       <Tag color="gold">Администратор</Tag>
+                    ) : user.role === "teacher" ? (
+                      <Tag color="purple">Преподаватель</Tag>
                     ) : (
-                      <Tag color="blue">Пользователь</Tag>
+                      <Tag color="blue">Студент</Tag>
                     )}
                   </Descriptions.Item>
                   <Descriptions.Item label="Статус">
@@ -184,20 +186,20 @@ export default function ProfilePage() {
                   <Descriptions.Item label="Соцсети">
                     {user.social_links
                       ? user.social_links
-                          .split("\n")
-                          .map((link) => link.trim())
-                          .filter((link) => link.length > 0)
-                          .map((link) => (
-                            <div key={link}>
-                              <a
-                                href={link}
-                                target="_blank"
-                                rel="noreferrer"
-                              >
-                                {link}
-                              </a>
-                            </div>
-                          ))
+                        .split("\n")
+                        .map((link) => link.trim())
+                        .filter((link) => link.length > 0)
+                        .map((link) => (
+                          <div key={link}>
+                            <a
+                              href={link}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              {link}
+                            </a>
+                          </div>
+                        ))
                       : "—"}
                   </Descriptions.Item>
                   <Descriptions.Item label="ID">
