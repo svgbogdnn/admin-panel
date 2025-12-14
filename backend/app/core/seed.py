@@ -46,9 +46,20 @@ def run_seed() -> None:
                 "password": "teacher123",
                 "is_superuser": False,
             },
+            {
+                "email": "b@b.com",
+                "full_name": "Алексей Гватемала",
+                "password": "123",
+                "is_superuser": False,
+            },
         ]
 
         students_data = [
+            {
+                "email": "c@c.com",
+                "full_name": "Анна Испания",
+                "password": "123",
+            },
             {
                 "email": "student.anna@example.com",
                 "full_name": "Анна Кузнецова",
