@@ -1,6 +1,61 @@
 .app-content {
   min-height: calc(100vh - 64px);
+  position: relative;
+  isolation: isolate;
 }
+
+.app-content::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: var(--app-gradient);
+}
+
+.app-content > * {
+  position: relative;
+  z-index: 1;
+}
+
+.page-bg--default {
+  --app-gradient: radial-gradient(1000px 560px at 14% 10%, rgba(34, 197, 94, 0.18), transparent 58%),
+    radial-gradient(980px 620px at 78% 22%, rgba(56, 189, 248, 0.14), transparent 60%),
+    radial-gradient(900px 560px at 60% 92%, rgba(168, 85, 247, 0.10), transparent 65%),
+    linear-gradient(180deg, rgba(6, 10, 20, 0.86), rgba(5, 8, 22, 0.88));
+}
+
+.page-bg--courses {
+  --app-gradient: radial-gradient(1100px 620px at 12% 12%, rgba(34, 197, 94, 0.30), transparent 58%),
+    radial-gradient(980px 620px at 78% 18%, rgba(56, 189, 248, 0.20), transparent 62%),
+    radial-gradient(900px 560px at 58% 92%, rgba(34, 197, 94, 0.12), transparent 68%),
+    linear-gradient(180deg, rgba(6, 10, 20, 0.78), rgba(5, 8, 22, 0.90));
+}
+
+.page-bg--attendance {
+  --app-gradient: radial-gradient(1100px 620px at 18% 14%, rgba(56, 189, 248, 0.22), transparent 60%),
+    radial-gradient(900px 560px at 74% 30%, rgba(34, 197, 94, 0.14), transparent 62%),
+    linear-gradient(180deg, rgba(6, 10, 20, 0.80), rgba(5, 8, 22, 0.90));
+}
+
+.page-bg--feedback {
+  --app-gradient: radial-gradient(1100px 620px at 18% 16%, rgba(168, 85, 247, 0.20), transparent 60%),
+    radial-gradient(980px 620px at 76% 22%, rgba(56, 189, 248, 0.14), transparent 62%),
+    linear-gradient(180deg, rgba(6, 10, 20, 0.80), rgba(5, 8, 22, 0.90));
+}
+
+.page-bg--export {
+  --app-gradient: radial-gradient(1100px 620px at 14% 14%, rgba(34, 197, 94, 0.18), transparent 60%),
+    radial-gradient(980px 620px at 78% 20%, rgba(245, 158, 11, 0.10), transparent 62%),
+    linear-gradient(180deg, rgba(6, 10, 20, 0.80), rgba(5, 8, 22, 0.90));
+}
+
+.page-bg--profile {
+  --app-gradient: radial-gradient(1100px 620px at 14% 14%, rgba(56, 189, 248, 0.18), transparent 60%),
+    radial-gradient(980px 620px at 78% 24%, rgba(34, 197, 94, 0.12), transparent 62%),
+    linear-gradient(180deg, rgba(6, 10, 20, 0.80), rgba(5, 8, 22, 0.90));
+}
+
 
 .auth-page {
   min-height: 100vh;

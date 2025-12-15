@@ -6,10 +6,7 @@ const { Header, Content } = Layout;
 
 type MenuItem = Required<MenuProps>["items"][number];
 
-function getItem(
-  label: React.ReactNode,
-  key: string,
-): MenuItem {
+function getItem(label: React.ReactNode, key: string): MenuItem {
   return {
     key,
     label,
@@ -22,6 +19,15 @@ const menuItems: MenuItem[] = [
   getItem("Фидбэк", "/feedback"),
   getItem("Экспорт", "/export"),
 ];
+
+function getBgClass(pathname: string): string {
+  if (pathname.startsWith("/courses")) return "page-bg--courses";
+  if (pathname.startsWith("/attendance")) return "page-bg--attendance";
+  if (pathname.startsWith("/feedback")) return "page-bg--feedback";
+  if (pathname.startsWith("/export")) return "page-bg--export";
+  if (pathname.startsWith("/profile")) return "page-bg--profile";
+  return "page-bg--default";
+}
 
 export default function AppLayout() {
   const navigate = useNavigate();
@@ -42,6 +48,8 @@ export default function AppLayout() {
     navigate("/login");
   };
 
+  const bgClass = getBgClass(location.pathname);
+
   return (
     <Layout style={{ minHeight: "100vh" }}>
       <Header
@@ -49,7 +57,6 @@ export default function AppLayout() {
           display: "flex",
           alignItems: "center",
           paddingInline: 24,
-          background: "#020617",
         }}
       >
         <div
@@ -111,12 +118,7 @@ export default function AppLayout() {
         </div>
       </Header>
 
-      <Content
-        style={{
-          background: "#020617",
-          color: "#e5e7eb",
-        }}
-      >
+      <Content className={`app-content page-bg ${bgClass}`}>
         <Outlet />
       </Content>
     </Layout>

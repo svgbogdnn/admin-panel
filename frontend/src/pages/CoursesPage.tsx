@@ -187,13 +187,15 @@ export default function CoursesPage() {
     {
       title: "",
       key: "actions",
-      width: 220,
+      width: 280,
       render: (_: unknown, record: Course) => {
         const canEdit = canEditCourse(record);
         return (
-          <Space size={10}>
+          <Space size={8} wrap>
             <Button
               type="link"
+              size="small"
+              style={{ paddingInline: 0 }}
               icon={<EyeOutlined />}
               onClick={(e) => {
                 e.preventDefault();
@@ -203,9 +205,11 @@ export default function CoursesPage() {
             >
               Подробнее
             </Button>
-
+    
             <Button
               type="link"
+              size="small"
+              style={{ paddingInline: 0 }}
               icon={<EditOutlined />}
               disabled={!canEdit}
               onClick={(e) => {
@@ -219,7 +223,7 @@ export default function CoursesPage() {
           </Space>
         );
       },
-    },
+    }, 
   ];
 
   return (
