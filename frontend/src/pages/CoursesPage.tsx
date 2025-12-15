@@ -1,212 +1,317 @@
-// import { useEffect, useState } from "react";
-// import { Button, Space, Table, Tag, Typography } from "antd";
-// import type { ColumnsType } from "antd/es/table";
-// import { type Course, getCourses } from "../api/courses";
-
-// const { Title } = Typography;
-
-// export default function CoursesPage() {
-//   const [courses, setCourses] = useState<Course[]>([]);
-//   const [loading, setLoading] = useState(false);
-
-//   useEffect(() => {
-//     const load = async () => {
-//       setLoading(true);
-//       try {
-//         const data = await getCourses();
-//         setCourses(data);
-//       } finally {
-//         setLoading(false);
-//       }
-//     };
-//     load();
-//   }, []);
-
-//   const columns: ColumnsType<Course> = [
-//     {
-//       title: "Название курса",
-//       dataIndex: "name",
-//       key: "name",
-//     },
-//     {
-//       title: "Дата начала",
-//       dataIndex: "start_date",
-//       key: "start_date",
-//       render: (value: string | null) =>
-//         value ? new Date(value).toLocaleDateString() : "—",
-//     },
-//     {
-//       title: "Дата окончания",
-//       dataIndex: "end_date",
-//       key: "end_date",
-//       render: (value: string | null) =>
-//         value ? new Date(value).toLocaleDateString() : "—",
-//     },
-//     {
-//       title: "Статус",
-//       dataIndex: "is_active",
-//       key: "is_active",
-//       render: (value: boolean) =>
-//         value ? (
-//           <Tag color="green">Активный</Tag>
-//         ) : (
-//           <Tag color="red">Неактивный</Tag>
-//         ),
-//     },
-//     {
-//       title: "Действия",
-//       key: "actions",
-//       render: () => (
-//         <Space>
-//           <Button type="link">Подробнее</Button>
-//           <Button type="link">Редактировать</Button>
-//         </Space>
-//       ),
-//     },
-//   ];
-
-//   return (
-//     <div style={{ padding: 24 }}>
-//       <Space
-//         style={{ marginBottom: 16, width: "100%", justifyContent: "space-between" }}
-//       >
-//         <Title level={3} style={{ color: "#e5e7eb", margin: 0 }}>
-//           Курсы
-//         </Title>
-//         <Button type="primary">Добавить курс</Button>
-//       </Space>
-
-//       <Table<Course>
-//         rowKey="id"
-//         dataSource={courses}
-//         columns={columns}
-//         loading={loading}
-//         pagination={{ pageSize: 10 }}
-//       />
-//     </div>
-//   );
-// }
-
-// frontend/src/pages/CoursesPage.tsx
-
-import { useEffect, useState } from "react";
-import { Button, Space, Table, Tag, Typography } from "antd";
-import type { ColumnsType } from "antd/es/table";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import {
+  Button,
+  Card,
+  Input,
+  Select,
+  Space,
+  Table,
+  Tag,
+  Typography,
+  message,
+} from "antd";
+import type { ColumnsType } from "antd/es/table";
+import {
+  EditOutlined,
+  EyeOutlined,
+  PlusOutlined,
+  ReloadOutlined,
+  SearchOutlined,
+} from "@ant-design/icons";
+import dayjs from "dayjs";
+
 import { type Course, getCourses } from "../api/courses";
 import { useAuth } from "../context/AuthContext";
 
-const { Title } = Typography;
+const { Title, Text } = Typography;
+
+type StatusFilter = "all" | "active" | "inactive";
+
+function formatDate(value?: string | null): string {
+  if (!value) return "—";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString();
+}
+
+function toLower(value: unknown): string {
+  return String(value ?? "").toLowerCase();
+}
 
 export default function CoursesPage() {
   const [courses, setCourses] = useState<Course[]>([]);
   const [loading, setLoading] = useState(false);
+
+  const [q, setQ] = useState("");
+  const [status, setStatus] = useState<StatusFilter>("all");
+
   const navigate = useNavigate();
   const { user, role } = useAuth();
 
   const isAdmin = role === "admin";
-  // Allow ALL users to create courses as requested
-  const canCreateCourse = true;
+  const canCreateCourse = role === "admin" || role === "teacher";
 
-  useEffect(() => {
-    const load = async () => {
-      setLoading(true);
-      try {
-        const data = await getCourses();
-        setCourses(data);
-      } finally {
-        setLoading(false);
-      }
-    };
-    load();
-  }, []);
-
-  // Check if current user can edit this course:
-  // - admin
-  // - or owner of the course (created by them)
   const canEditCourse = (course: Course): boolean => {
     if (isAdmin) return true;
     if (user && course.teacher_id === user.id) return true;
     return false;
   };
 
+  const loadCourses = async () => {
+    setLoading(true);
+    try {
+      const data = await getCourses();
+      setCourses(data);
+    } catch {
+      message.error("Не удалось загрузить курсы");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadCourses();
+  }, []);
+
+  const filtered = useMemo(() => {
+    const query = q.trim().toLowerCase();
+    return courses.filter((c) => {
+      const byStatus =
+        status === "all" ? true : status === "active" ? !!c.is_active : !c.is_active;
+
+      if (!byStatus) return false;
+      if (!query) return true;
+
+      const name = toLower(c.name);
+      const desc = toLower((c as any).description);
+      const teacher = toLower(c.teacher_id);
+      const start = toLower(c.start_date);
+      const end = toLower(c.end_date);
+
+      return (
+        name.includes(query) ||
+        desc.includes(query) ||
+        teacher.includes(query) ||
+        start.includes(query) ||
+        end.includes(query)
+      );
+    });
+  }, [courses, q, status]);
+
+  const stats = useMemo(() => {
+    const total = filtered.length;
+    const active = filtered.filter((c) => !!c.is_active).length;
+    const inactive = total - active;
+
+    const now = dayjs();
+    const endingSoon = filtered.filter((c) => {
+      if (!c.end_date) return false;
+      const d = dayjs(c.end_date);
+      if (!d.isValid()) return false;
+      const diff = d.startOf("day").diff(now.startOf("day"), "day");
+      return diff >= 0 && diff <= 14;
+    }).length;
+
+    return { total, active, inactive, endingSoon };
+  }, [filtered]);
+
   const columns: ColumnsType<Course> = [
     {
-      title: "Название курса",
+      title: "Курс",
       dataIndex: "name",
       key: "name",
+      sorter: (a, b) => String(a.name ?? "").localeCompare(String(b.name ?? ""), "ru"),
+      render: (_value: unknown, record: Course) => {
+        const description = (record as any).description as string | null | undefined;
+        const meta =
+          (description && description.trim().length > 0 ? description.trim() : null) ??
+          (record.teacher_id ? `Учитель ID: ${record.teacher_id}` : "—");
+
+        return (
+          <div className="cell-title">
+            <div className="cell-title-main">{record.name}</div>
+            <Text className="cell-title-sub" type="secondary" ellipsis={{ tooltip: meta }}>
+              {meta}
+            </Text>
+          </div>
+        );
+      },
     },
     {
-      title: "Дата начала",
+      title: "Старт",
       dataIndex: "start_date",
       key: "start_date",
-      render: (value: string | null) =>
-        value ? new Date(value).toLocaleDateString() : "—",
+      width: 140,
+      className: "mono",
+      sorter: (a, b) => {
+        const da = a.start_date ? dayjs(a.start_date) : null;
+        const db = b.start_date ? dayjs(b.start_date) : null;
+        const va = da && da.isValid() ? da.valueOf() : -Infinity;
+        const vb = db && db.isValid() ? db.valueOf() : -Infinity;
+        return va - vb;
+      },
+      render: (value: string | null) => formatDate(value),
     },
     {
-      title: "Дата окончания",
+      title: "Конец",
       dataIndex: "end_date",
       key: "end_date",
-      render: (value: string | null) =>
-        value ? new Date(value).toLocaleDateString() : "—",
+      width: 140,
+      className: "mono",
+      sorter: (a, b) => {
+        const da = a.end_date ? dayjs(a.end_date) : null;
+        const db = b.end_date ? dayjs(b.end_date) : null;
+        const va = da && da.isValid() ? da.valueOf() : Infinity;
+        const vb = db && db.isValid() ? db.valueOf() : Infinity;
+        return va - vb;
+      },
+      render: (value: string | null) => formatDate(value),
     },
     {
       title: "Статус",
       dataIndex: "is_active",
       key: "is_active",
+      width: 140,
       render: (value: boolean) =>
         value ? (
-          <Tag color="green">Активный</Tag>
+          <Tag className="pill-tag" color="green">
+            Активный
+          </Tag>
         ) : (
-          <Tag color="red">Неактивный</Tag>
+          <Tag className="pill-tag" color="red">
+            Неактивный
+          </Tag>
         ),
     },
     {
-      title: "Действия",
+      title: "",
       key: "actions",
-      render: (_: unknown, record: Course) => (
-        <Space>
-          <Button
-            type="link"
-            onClick={() => navigate(`/courses/${record.id}`)}
-          >
-            Подробнее
-          </Button>
-          {canEditCourse(record) && (
+      width: 220,
+      render: (_: unknown, record: Course) => {
+        const canEdit = canEditCourse(record);
+        return (
+          <Space size={10}>
             <Button
               type="link"
-              onClick={() => navigate(`/courses/${record.id}/edit`)}
+              icon={<EyeOutlined />}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                navigate(`/courses/${record.id}`);
+              }}
+            >
+              Подробнее
+            </Button>
+
+            <Button
+              type="link"
+              icon={<EditOutlined />}
+              disabled={!canEdit}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                navigate(`/courses/${record.id}/edit`);
+              }}
             >
               Редактировать
             </Button>
-          )}
-        </Space>
-      ),
+          </Space>
+        );
+      },
     },
   ];
 
   return (
-    <div style={{ padding: 24 }}>
-      <Space
-        style={{ marginBottom: 16, width: "100%", justifyContent: "space-between" }}
-      >
-        <Title level={3} style={{ color: "#e5e7eb", margin: 0 }}>
-          Курсы
-        </Title>
-        {canCreateCourse && (
-          <Button type="primary" onClick={() => navigate("/courses/new")}>
-            Добавить курс
-          </Button>
-        )}
-      </Space>
+    <div className="page-wrap">
+      <div className="page-head">
+        <div className="page-head-left">
+          <Title level={2} style={{ margin: 0 }}>
+            Курсы
+          </Title>
+        </div>
 
-      <Table<Course>
-        rowKey="id"
-        dataSource={courses}
-        columns={columns}
-        loading={loading}
-        pagination={{ pageSize: 10 }}
-      />
+        <div className="page-head-actions">
+          <Button icon={<ReloadOutlined />} onClick={() => void loadCourses()} loading={loading}>
+            Обновить
+          </Button>
+
+          {canCreateCourse && (
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate("/courses/new")}>
+              Добавить курс
+            </Button>
+          )}
+        </div>
+      </div>
+
+      <Card className="card-surface" bordered={false} bodyStyle={{ padding: 0 }}>
+        <div className="table-toolbar">
+          <div className="table-toolbar-left">
+            <Input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              allowClear
+              prefix={<SearchOutlined />}
+              placeholder="Поиск: название, описание, ID учителя, дата"
+              style={{ width: 380 }}
+            />
+
+            <Select
+              value={status}
+              onChange={(v) => setStatus(v as StatusFilter)}
+              style={{ width: 220 }}
+              options={[
+                { value: "all", label: "Все статусы" },
+                { value: "active", label: "Только активные" },
+                { value: "inactive", label: "Только неактивные" },
+              ]}
+            />
+          </div>
+
+          <div className="table-toolbar-right">
+            <Text type="secondary">
+              Показано: <span className="mono">{filtered.length}</span> /{" "}
+              <span className="mono">{courses.length}</span>
+            </Text>
+          </div>
+        </div>
+
+        <div className="stats">
+          <div className="stat-item">
+            <div className="stat-label">Всего</div>
+            <div className="stat-value">{stats.total}</div>
+          </div>
+          <div className="stat-item">
+            <div className="stat-label">Активные</div>
+            <div className="stat-value">{stats.active}</div>
+          </div>
+          <div className="stat-item">
+            <div className="stat-label">Неактивные</div>
+            <div className="stat-value">{stats.inactive}</div>
+          </div>
+          <div className="stat-item">
+            <div className="stat-label">Заканчиваются ≤ 14 дней</div>
+            <div className="stat-value">{stats.endingSoon}</div>
+          </div>
+        </div>
+
+        <Table<Course>
+          className="data-table"
+          rowKey="id"
+          dataSource={filtered}
+          columns={columns}
+          loading={loading}
+          tableLayout="fixed"
+          pagination={{ pageSize: 10, showSizeChanger: false }}
+          rowClassName={(_, index) => (index % 2 === 1 ? "row-zebra" : "")}
+          onRow={(record) => ({
+            onClick: () => navigate(`/courses/${record.id}`),
+          })}
+          locale={{
+            emptyText: q.trim() || status !== "all" ? "Нет курсов по выбранным фильтрам" : "Курсов пока нет",
+          }}
+        />
+      </Card>
     </div>
   );
 }
