@@ -105,7 +105,6 @@ export default function CoursesPage() {
   const { user, role } = useAuth();
 
   const isAdmin = role === "admin";
-  const isTeacher = role === "teacher";
   // Allow ALL users to create courses as requested
   const canCreateCourse = true;
 
@@ -122,10 +121,12 @@ export default function CoursesPage() {
     load();
   }, []);
 
-  // Check if current user can edit this course (admin or course owner)
+  // Check if current user can edit this course:
+  // - admin
+  // - or owner of the course (created by them)
   const canEditCourse = (course: Course): boolean => {
     if (isAdmin) return true;
-    if (isTeacher && user && course.teacher_id === user.id) return true;
+    if (user && course.teacher_id === user.id) return true;
     return false;
   };
 
