@@ -235,33 +235,7 @@ export default function ProfilePage() {
                   </Space>
                 </div>
               </div>
-{/* 
-              <div className="stats">
-                <div className="stat-item">
-                  <div className="stat-label">Регистрация</div>
-                  <div className="stat-value" style={{ fontSize: 14 }}>
-                    {formatDateTime(user?.created_at ?? null)}
-                  </div>
-                </div>
-                <div className="stat-item">
-                  <div className="stat-label">Дата рождения</div>
-                  <div className="stat-value" style={{ fontSize: 14 }}>
-                    {formatDate(user?.birthday ?? null)}
-                  </div>
-                </div>
-                <div className="stat-item">
-                  <div className="stat-label">Группа</div>
-                  <div className="stat-value" style={{ fontSize: 14 }}>
-                    {user?.study_group || "—"}
-                  </div>
-                </div>
-                <div className="stat-item">
-                  <div className="stat-label">Телефон</div>
-                  <div className="stat-value" style={{ fontSize: 14 }}>
-                    {user?.phone || "—"}
-                  </div>
-                </div>
-              </div> */}
+
               <div
                 className="stats"
                 style={{
@@ -348,9 +322,6 @@ export default function ProfilePage() {
                 )}
               </div>
 
-              <Text type="secondary" style={{ opacity: 0.9 }}>
-                Новые поля сохраняются в профиле текущего пользователя.
-              </Text>
             </Space>
           </Card>
         </Col>
@@ -528,9 +499,6 @@ export default function ProfilePage() {
 
                       <Divider style={{ margin: "18px 0 0" }} />
 
-                      <Text type="secondary">
-                        Если пароль не меняется — чаще всего backend возвращает причину в поле <span className="mono">detail</span>.
-                      </Text>
                     </div>
                   ),
                 },

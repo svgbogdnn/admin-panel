@@ -1,5 +1,3 @@
-// frontend/src/pages/CourseDetailPage.tsx
-
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Button, Card, Descriptions, Space, Spin, Tag, Typography } from "antd";

@@ -5,7 +5,6 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-
 class Settings:
     def __init__(self):
         self.app_name = os.getenv("APP_NAME", "Admin Panel Attendance API")
@@ -16,7 +15,6 @@ class Settings:
         self.database_url = os.getenv("DATABASE_URL", "sqlite:///./app.db")
         origins = os.getenv("BACKEND_CORS_ORIGINS", "")
         self.backend_cors_origins = [o.strip() for o in origins.split(",") if o.strip()]
-
 
 @lru_cache
 def get_settings() -> Settings:

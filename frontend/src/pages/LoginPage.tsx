@@ -98,7 +98,6 @@ export default function LoginPage() {
             <Text>Нет аккаунта? </Text>
             <Link to="/register">Зарегистрироваться</Link>
           </div>
-          <Text type="secondary">Забыли пароль? Функция пока не реализована</Text>
         </div>
       </Card>
     </div>

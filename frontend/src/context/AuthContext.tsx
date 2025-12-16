@@ -54,7 +54,6 @@ export function useAuth(): AuthContextValue {
     return ctx;
 }
 
-// Helper hooks for role checks
 export function useIsAdmin(): boolean {
     const { role } = useAuth();
     return role === "admin";
