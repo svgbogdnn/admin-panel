@@ -14,7 +14,7 @@ class User(Base):
     full_name = Column(String, nullable=True)
     hashed_password = Column(String, nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
-    is_superuser = Column(Boolean, default=False, nullable=False)
+    role = Column(String(16), nullable=False, default="student", index=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     birthday = Column(Date, nullable=True)

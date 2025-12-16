@@ -8,7 +8,7 @@ class UserBase(BaseModel):
     email: EmailStr
     full_name: Optional[str] = None
     is_active: bool = True
-    is_superuser: bool = False
+    role: str = "student"
     birthday: Optional[date] = None
     nationality: Optional[str] = None
     study_course: Optional[str] = None
@@ -24,7 +24,7 @@ class UserCreate(UserBase):
 class UserUpdate(BaseModel):
     full_name: Optional[str] = None
     is_active: Optional[bool] = None
-    is_superuser: Optional[bool] = None
+    role: Optional[str] = None
     password: Optional[str] = None
     birthday: Optional[date] = None
     nationality: Optional[str] = None
@@ -37,7 +37,6 @@ class UserUpdate(BaseModel):
 class UserRead(UserBase):
     id: int
     created_at: datetime
-    role: str = "student"  # Computed: "admin", "teacher", or "student"
 
     class Config:
         from_attributes = True

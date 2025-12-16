@@ -10,20 +10,15 @@ from app.core.security import (
     get_current_user,
     get_password_hash,
     verify_password,
+    require_admin,
+    ROLE_ADMIN,
+    ROLE_TEACHER,
+    ROLE_STUDENT,
 )
 from app.models.user import User
 from app.schemas.user import UserCreate, UserRead, UserUpdate
 
 router = APIRouter(prefix="/users", tags=["users"])
-
-
-def ensure_superuser(current_user: User = Depends(get_current_user)) -> User:
-    if not current_user.is_superuser:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions",
-        )
-    return current_user
 
 
 class UserProfileUpdate(BaseModel):
@@ -46,11 +41,7 @@ def read_me(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> UserRead:
-    from app.core.security import get_role
-    role = get_role(current_user, db)
-    user_data = UserRead.model_validate(current_user)
-    user_data.role = role
-    return user_data
+    return current_user
 
 
 @router.patch("/me", response_model=UserRead)
@@ -91,33 +82,19 @@ def change_password_me(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Current password is incorrect",
         )
-
     current_user.hashed_password = get_password_hash(payload.new_password)
     db.add(current_user)
     db.commit()
 
 
-@router.get(
-    "/",
-    response_model=List[UserRead],
-    dependencies=[Depends(ensure_superuser)],
-)
-def list_users(
-    db: Session = Depends(get_db),
-) -> List[UserRead]:
+@router.get("/", response_model=List[UserRead], dependencies=[Depends(require_admin)])
+def list_users(db: Session = Depends(get_db)) -> List[UserRead]:
     users = db.query(User).order_by(User.id).all()
     return users
 
 
-@router.get(
-    "/{user_id}",
-    response_model=UserRead,
-    dependencies=[Depends(ensure_superuser)],
-)
-def get_user(
-    user_id: int,
-    db: Session = Depends(get_db),
-) -> UserRead:
+@router.get("/{user_id}", response_model=UserRead, dependencies=[Depends(require_admin)])
+def get_user(user_id: int, db: Session = Depends(get_db)) -> UserRead:
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(
@@ -127,16 +104,8 @@ def get_user(
     return user
 
 
-@router.post(
-    "/",
-    response_model=UserRead,
-    status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(ensure_superuser)],
-)
-def create_user(
-    user_in: UserCreate,
-    db: Session = Depends(get_db),
-) -> UserRead:
+@router.post("/", response_model=UserRead, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_admin)])
+def create_user(user_in: UserCreate, db: Session = Depends(get_db)) -> UserRead:
     existing = db.query(User).filter(User.email == user_in.email).first()
     if existing:
         raise HTTPException(
@@ -144,11 +113,18 @@ def create_user(
             detail="User with this email already exists",
         )
 
+    role = (user_in.role or ROLE_STUDENT).strip().lower()
+    if role not in (ROLE_ADMIN, ROLE_TEACHER, ROLE_STUDENT):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid role",
+        )
+
     user = User(
         email=user_in.email,
         full_name=user_in.full_name,
         is_active=user_in.is_active,
-        is_superuser=user_in.is_superuser,
+        role=role,
         hashed_password=get_password_hash(user_in.password),
         birthday=user_in.birthday,
         nationality=user_in.nationality,
@@ -163,16 +139,8 @@ def create_user(
     return user
 
 
-@router.patch(
-    "/{user_id}",
-    response_model=UserRead,
-    dependencies=[Depends(ensure_superuser)],
-)
-def update_user(
-    user_id: int,
-    user_in: UserUpdate,
-    db: Session = Depends(get_db),
-) -> UserRead:
+@router.patch("/{user_id}", response_model=UserRead, dependencies=[Depends(require_admin)])
+def update_user(user_id: int, user_in: UserUpdate, db: Session = Depends(get_db)) -> UserRead:
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(
@@ -184,10 +152,18 @@ def update_user(
         user.full_name = user_in.full_name
     if user_in.is_active is not None:
         user.is_active = user_in.is_active
-    if user_in.is_superuser is not None:
-        user.is_superuser = user_in.is_superuser
     if user_in.password is not None:
         user.hashed_password = get_password_hash(user_in.password)
+
+    if user_in.role is not None:
+        role = user_in.role.strip().lower()
+        if role not in (ROLE_ADMIN, ROLE_TEACHER, ROLE_STUDENT):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid role",
+            )
+        user.role = role
+
     if user_in.birthday is not None:
         user.birthday = user_in.birthday
     if user_in.nationality is not None:
@@ -207,15 +183,8 @@ def update_user(
     return user
 
 
-@router.delete(
-    "/{user_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-    dependencies=[Depends(ensure_superuser)],
-)
-def delete_user(
-    user_id: int,
-    db: Session = Depends(get_db),
-) -> None:
+@router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_admin)])
+def delete_user(user_id: int, db: Session = Depends(get_db)) -> None:
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(

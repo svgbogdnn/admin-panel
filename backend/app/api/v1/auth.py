@@ -10,6 +10,7 @@ from app.core.security import (
     get_password_hash,
     get_current_user,
     create_access_token,
+    ROLE_STUDENT,
 )
 from app.models.user import User
 from app.schemas.auth import LoginRequest, Token, UserCreate, UserRead
@@ -33,7 +34,7 @@ def register_user(user_in: UserCreate, db: Session = Depends(get_db)) -> UserRea
         full_name=user_in.full_name,
         hashed_password=hashed_password,
         is_active=user_in.is_active,
-        is_superuser=user_in.is_superuser,
+        role=ROLE_STUDENT,
     )
     db.add(user)
     db.commit()

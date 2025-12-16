@@ -1,7 +1,7 @@
 from datetime import date, time
 
 from app.core.db import Base, SessionLocal, engine
-from app.core.security import get_password_hash
+from app.core.security import get_password_hash, ROLE_ADMIN, ROLE_TEACHER, ROLE_STUDENT
 from app.models.attendance import Attendance, AttendanceStatus
 from app.models.course import Course
 from app.models.feedback import Feedback
@@ -10,210 +10,134 @@ from app.models.user import User
 
 
 def run_seed() -> None:
+    Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
 
     db = SessionLocal()
     try:
-        db.query(Attendance).delete()
-        db.query(Feedback).delete()
-        db.query(Lesson).delete()
-        db.query(Course).delete()
-        db.query(User).delete()
-        db.commit()
-
-        teachers_data = [
-            {
-                "email": "admin@example.com",
-                "full_name": "Администратор системы",
-                "password": "admin123",
-                "is_superuser": True,
-            },
+        admin_data = [
             {
                 "email": "a@a.com",
-                "full_name": "Администратор системы",
+                "full_name": "Администратор системы (демо)",
                 "password": "123",
-                "is_superuser": True,
+                "role": ROLE_ADMIN,
+            }
+        ]
+
+        teacher_data = [
+            {
+                "email": "b@b.com",
+                "full_name": "Доцент кафедры ИТ: Борис Ковалёв",
+                "password": "123",
+                "role": ROLE_TEACHER,
             },
             {
                 "email": "teacher.irina@example.com",
-                "full_name": "Ирина Петрова",
-                "password": "teacher123",
-                "is_superuser": False,
-            },
-            {
-                "email": "teacher.alexey@example.com",
-                "full_name": "Алексей Смирнов",
-                "password": "teacher123",
-                "is_superuser": False,
-            },
-            {
-                "email": "b@b.com",
-                "full_name": "Алексей Гватемала",
+                "full_name": "Кандидат наук: Ирина Петрова",
                 "password": "123",
-                "is_superuser": False,
+                "role": ROLE_TEACHER,
             },
         ]
 
-        students_data = [
+        student_data = [
             {
                 "email": "c@c.com",
-                "full_name": "Анна Испания",
+                "full_name": "Анна Соколова",
                 "password": "123",
-            },
-            {
-                "email": "student.anna@example.com",
-                "full_name": "Анна Кузнецова",
-                "password": "student123",
+                "role": ROLE_STUDENT,
+                "birthday": date(2002, 4, 18),
+                "nationality": "Россия",
+                "study_course": "Магистратура: Информатика и вычислительная техника",
+                "study_group": "МИВТ-21",
+                "phone": "+7 900 000-00-01",
+                "social_links": "Telegram: @anna_sokolova",
             },
             {
                 "email": "student.dmitry@example.com",
                 "full_name": "Дмитрий Орлов",
-                "password": "student123",
-            },
-            {
-                "email": "student.maria@example.com",
-                "full_name": "Мария Иванова",
-                "password": "student123",
-            },
-            {
-                "email": "student.sergey@example.com",
-                "full_name": "Сергей Волков",
-                "password": "student123",
-            },
-            {
-                "email": "student.elena@example.com",
-                "full_name": "Елена Соколова",
-                "password": "student123",
-            },
-            {
-                "email": "student.igor@example.com",
-                "full_name": "Игорь Новиков",
-                "password": "student123",
-            },
-            {
-                "email": "student.olga@example.com",
-                "full_name": "Ольга Романова",
-                "password": "student123",
+                "password": "123",
+                "role": ROLE_STUDENT,
+                "birthday": date(2001, 11, 2),
+                "nationality": "Россия",
+                "study_course": "Магистратура: Анализ данных и машинное обучение",
+                "study_group": "АДМО-11",
+                "phone": "+7 900 000-00-02",
+                "social_links": "GitHub: github.com/d-orlov",
             },
         ]
 
-        teachers = []
-        for data in teachers_data:
-            user = db.query(User).filter(User.email == data["email"]).first()
-            if not user:
-                user = User(
-                    email=data["email"],
-                    full_name=data["full_name"],
-                    hashed_password=get_password_hash(data["password"]),
-                    is_active=True,
-                    is_superuser=data["is_superuser"],
-                )
-                db.add(user)
-                db.flush()
+        users = {}
 
-            teachers.append(user)
-            print(f"Added teacher: {user.email} -> ID: {user.id}")
-
-
-        students = []
-        for data in students_data:
-            user = db.query(User).filter(User.email == data["email"]).first()
-            if not user:
-                user = User(
-                    email=data["email"],
-                    full_name=data["full_name"],
-                    hashed_password=get_password_hash(data["password"]),
-                    is_active=True,
-                    is_superuser=False,
-                )
-                db.add(user)
-                db.flush()
-            students.append(user)
+        for data in admin_data + teacher_data + student_data:
+            u = User(
+                email=data["email"],
+                full_name=data["full_name"],
+                hashed_password=get_password_hash(data["password"]),
+                is_active=True,
+                role=data["role"],
+                birthday=data.get("birthday"),
+                nationality=data.get("nationality"),
+                study_course=data.get("study_course"),
+                study_group=data.get("study_group"),
+                phone=data.get("phone"),
+                social_links=data.get("social_links"),
+            )
+            db.add(u)
+            db.flush()
+            users[u.email] = u
 
         db.commit()
 
+        teacher_b = users["b@b.com"]
+        teacher_irina = users["teacher.irina@example.com"]
+
         courses_data = [
             {
-                "name": "Python 101: Основы программирования",
-                "description": "Базовый курс по синтаксису Python, типам данных и функциям. Подходит для полного нуля.",
-                "start_date": date(2024, 9, 1),
-                "end_date": date(2024, 12, 1),
-                "teacher": teachers[2],
+                "name": "Методы машинного обучения (магистратура)",
+                "description": "Регрессия и классификация, регуляризация, кросс-валидация, метрики качества, интерпретируемость моделей. Фокус на корректной постановке задачи и воспроизводимых экспериментах.",
+                "start_date": date(2025, 9, 8),
+                "end_date": date(2025, 12, 1),
+                "teacher_id": teacher_irina.id,
             },
             {
-                "name": "Алгоритмы и структуры данных",
-                "description": "Списки, стеки, очереди, деревья и базовые алгоритмы сортировки и поиска.",
-                "start_date": date(2024, 9, 2),
-                "end_date": date(2024, 12, 2),
-                "teacher": teachers[2],
+                "name": "Статистический вывод и байесовские методы",
+                "description": "Оценивание параметров, доверительные интервалы, проверка гипотез, байесовский вывод, апостериорные распределения, MCMC-интуиция. Практика на прикладных кейсах.",
+                "start_date": date(2025, 9, 9),
+                "end_date": date(2025, 12, 2),
+                "teacher_id": teacher_b.id,
             },
             {
-                "name": "Веб-разработка: HTML, CSS, JS",
-                "description": "Основы создания веб-интерфейсов, верстка и базовый JavaScript.",
-                "start_date": date(2024, 9, 3),
-                "end_date": date(2024, 12, 3),
-                "teacher": teachers[3],
+                "name": "Инженерия данных и ETL-пайплайны",
+                "description": "Проектирование потоков данных, качество данных, версионирование схем, дедупликация, инкрементальные загрузки, мониторинг пайплайнов. Подготовка датасетов для аналитики и ML.",
+                "start_date": date(2025, 9, 10),
+                "end_date": date(2025, 12, 3),
+                "teacher_id": teacher_b.id,
             },
             {
-                "name": "FastAPI для бэкенда",
-                "description": "Создание API, работа с БД через SQLAlchemy, авторизация и документация.",
-                "start_date": date(2024, 9, 4),
-                "end_date": date(2024, 12, 4),
-                "teacher": teachers[3],
+                "name": "Распределённые системы и отказоустойчивость",
+                "description": "Консистентность и доступность, репликация, идемпотентность, ретраи. Практика проектирования сервисов под нагрузкой и сбои.",
+                "start_date": date(2025, 9, 11),
+                "end_date": date(2025, 12, 4),
+                "teacher_id": teacher_irina.id,
             },
             {
-                "name": "Базы данных и SQL",
-                "description": "Проектирование схемы, JOIN-ы, индексы и оптимизация запросов.",
-                "start_date": date(2024, 9, 5),
-                "end_date": date(2024, 12, 5),
-                "teacher": teachers[3],
-            },
-            {
-                "name": "Git и командная разработка",
-                "description": "Git flow, pull request-ы, code review и работа с GitHub.",
-                "start_date": date(2024, 9, 6),
-                "end_date": date(2024, 12, 6),
-                "teacher": teachers[2],
-            },
-            {
-                "name": "Тестирование и QA",
-                "description": "Юнит-тесты, pytest, основы автоматизированного тестирования.",
-                "start_date": date(2024, 9, 7),
-                "end_date": date(2024, 12, 7),
-                "teacher": teachers[2],
-            },
-            {
-                "name": "Основы компьютерных сетей",
-                "description": "Модель OSI, TCP/IP, протоколы и базовая сетевых инфраструктура.",
-                "start_date": date(2024, 9, 8),
-                "end_date": date(2024, 12, 8),
-                "teacher": teachers[2],
-            },
-            {
-                "name": "Основы машинного обучения",
-                "description": "Линейная регрессия, классификация, подготовка данных и метрики качества.",
-                "start_date": date(2024, 9, 9),
-                "end_date": date(2024, 12, 9),
-                "teacher": teachers[2],
-            },
-            {
-                "name": "Продвинутый Python",
-                "description": "Генераторы, декораторы, контекстные менеджеры и асинхронность.",
-                "start_date": date(2024, 9, 10),
-                "end_date": date(2024, 12, 10),
-                "teacher": teachers[3],
+                "name": "Проектирование API и безопасность (FastAPI)",
+                "description": "REST-дизайн, схемы данных, контроль доступа, аудит действий, обработка ошибок, пагинация и фильтры. Отдельно: модели угроз и практики безопасной разработки.",
+                "start_date": date(2025, 9, 12),
+                "end_date": date(2025, 12, 5),
+                "teacher_id": teacher_irina.id,
             },
         ]
 
         courses = []
-        for data in courses_data:
+        for c in courses_data:
             course = Course(
-                name=data["name"],
-                description=data["description"],
-                start_date=data["start_date"],
-                end_date=data["end_date"],
+                name=c["name"],
+                description=c["description"],
+                start_date=c["start_date"],
+                end_date=c["end_date"],
                 is_active=True,
-                teacher_id=data["teacher"].id,
+                teacher_id=c["teacher_id"],
             )
             db.add(course)
             db.flush()
@@ -221,61 +145,99 @@ def run_seed() -> None:
 
         db.commit()
 
+        lessons_plan = [
+            ("Лекция 1: Постановка задачи обучения, разбиение данных, метрики качества", date(2025, 9, 8), "Аудитория 201"),
+            ("Семинар 1: Кросс-валидация, регуляризация, диагностика переобучения", date(2025, 9, 15), "Аудитория 201"),
+            ("Лекция 1: Проверка гипотез и доверительные интервалы на практике", date(2025, 9, 9), "Аудитория 305"),
+            ("Семинар 1: Байесовский вывод и апостериорные оценки в прикладных задачах", date(2025, 9, 16), "Аудитория 305"),
+            ("Лекция 1: Архитектура ETL, качество данных и типовые ошибки", date(2025, 9, 10), "Аудитория 112"),
+            ("Семинар 1: Инкрементальные загрузки и дедупликация на реальных данных", date(2025, 9, 17), "Аудитория 112"),
+            ("Лекция 1: Репликация, консистентность, модель сбоев", date(2025, 9, 11), "Аудитория 410"),
+            ("Семинар 1: Идемпотентность, ретраи и проектирование под нестабильные сети", date(2025, 9, 18), "Аудитория 410"),
+            ("Лекция 1: Дизайн REST-API, схемы данных и ошибки интерфейса", date(2025, 9, 12), "Аудитория 220"),
+            ("Семинар 1: Контроль доступа и базовые практики безопасной разработки", date(2025, 9, 19), "Аудитория 220"),
+        ]
+
         lessons = []
-        for index, course in enumerate(courses, start=1):
-            lesson = Lesson(
+        for course, (topic1, d1, room1), (topic2, d2, room2) in zip(courses, lessons_plan[0::2], lessons_plan[1::2]):
+            l1 = Lesson(
                 course_id=course.id,
-                topic=f"Занятие {index}: Введение в курс «{course.name}»",
-                date=course.start_date or date(2024, 9, index),
-                room=f"Аудитория {100 + index}",
+                topic=topic1,
+                date=d1,
+                room=room1,
                 start_time=time(10, 0),
                 end_time=time(11, 30),
             )
-            db.add(lesson)
+            db.add(l1)
             db.flush()
-            lessons.append(lesson)
+            lessons.append(l1)
+
+            l2 = Lesson(
+                course_id=course.id,
+                topic=topic2,
+                date=d2,
+                room=room2,
+                start_time=time(10, 0),
+                end_time=time(11, 30),
+            )
+            db.add(l2)
+            db.flush()
+            lessons.append(l2)
 
         db.commit()
 
-        for lesson in lessons:
-            for student in students:
-                attendance = Attendance(
-                    lesson_id=lesson.id,
-                    student_id=student.id,
-                    status=AttendanceStatus.present,
-                    comment="Присутствовал на занятии",
-                )
-                db.add(attendance)
+        students = [users["c@c.com"], users["student.dmitry@example.com"]]
 
-        db.commit()
-
-        feedback_texts = [
-            "Очень понятное объяснение материала.",
-            "Понравилась структура урока и примеры.",
-            "Было немного быстро, но в целом хорошо.",
-            "Хочется больше практических задач.",
-            "Отличная подача, все по делу.",
-            "Местами сложно, но преподаватель помог разобраться.",
-            "Нравится, что даются реальные кейсы.",
-            "Хороший баланс теории и практики.",
-            "Иногда не хватает времени на вопросы.",
-            "Один из лучших уроков на курсе.",
+        status_matrix = [
+            (AttendanceStatus.present, "Присутствовал, активно участвовал в обсуждении."),
+            (AttendanceStatus.late, "Опоздание на 10 минут, причина: транспорт."),
+            (AttendanceStatus.absent, "Отсутствовал без уважительной причины."),
+            (AttendanceStatus.excused, "Отсутствовал по уважительной причине (справка)."),
         ]
 
-        for index in range(10):
-            lesson = lessons[index % len(lessons)]
-            student = students[index % len(students)]
-            rating = 3.0 + float(index % 3)
-            feedback = Feedback(
+        for i, lesson in enumerate(lessons):
+            for j, student in enumerate(students):
+                st, comment = status_matrix[(i + j) % len(status_matrix)]
+                a = Attendance(
+                    lesson_id=lesson.id,
+                    student_id=student.id,
+                    status=st,
+                    comment=comment,
+                )
+                db.add(a)
+
+        db.commit()
+
+        feedback_samples = [
+            (4.8, "Материал изложен структурно, примеры помогли закрепить ключевые идеи."),
+            (4.2, "Темп высокий, но после семинара стало понятнее. Хотелось бы больше практики."),
+            (5.0, "Отличная связка теории и реальных кейсов. Полезно для курсового проекта."),
+            (3.9, "Тема сложная, нужен дополнительный разбор задач на следующем занятии."),
+        ]
+
+        feedback_pairs = [
+            (lessons[0], students[0], feedback_samples[0]),
+            (lessons[1], students[0], feedback_samples[1]),
+            (lessons[2], students[1], feedback_samples[2]),
+            (lessons[3], students[1], feedback_samples[0]),
+            (lessons[6], students[0], feedback_samples[2]),
+            (lessons[9], students[1], feedback_samples[3]),
+        ]
+
+        for lesson, student, (rating, comment) in feedback_pairs:
+            f = Feedback(
                 lesson_id=lesson.id,
                 student_id=student.id,
                 rating=rating,
-                comment=feedback_texts[index],
+                comment=comment,
                 is_hidden=False,
             )
-            db.add(feedback)
+            db.add(f)
 
         db.commit()
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()
 

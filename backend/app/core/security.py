@@ -11,6 +11,10 @@ from app.core.config import get_settings
 from app.core.db import get_db
 from app.models.user import User
 
+ROLE_ADMIN = "admin"
+ROLE_TEACHER = "teacher"
+ROLE_STUDENT = "student"
+
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/login")
 
 
@@ -64,30 +68,15 @@ async def get_current_user(
     return user
 
 
-# ============ RBAC Helper Functions ============
-
-def is_teacher(user: User, db: Session) -> bool:
-    """Check if user is a teacher (owns at least one course or has teacher email)."""
-    # Allow bootstrapping: if email starts with "teacher.", they are a teacher.
-    # Allow bootstrapping: if email starts with "teacher.", they are a teacher.
-    if user.email and user.email.startswith("teacher."):
-        return True
-    
-    return False
-
-
-def get_role(user: User, db: Session) -> str:
-    """Get user role: 'admin', 'teacher', or 'student'."""
-    if user.is_superuser:
-        return "admin"
-    if is_teacher(user, db):
-        return "teacher"
-    return "student"
+def get_role(user: User) -> str:
+    role = (user.role or "").strip().lower()
+    if role in (ROLE_ADMIN, ROLE_TEACHER, ROLE_STUDENT):
+        return role
+    return ROLE_STUDENT
 
 
 def require_admin(current_user: User = Depends(get_current_user)) -> User:
-    """Dependency that requires the user to be an admin (superuser)."""
-    if not current_user.is_superuser:
+    if get_role(current_user) != ROLE_ADMIN:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin access required",
@@ -97,12 +86,9 @@ def require_admin(current_user: User = Depends(get_current_user)) -> User:
 
 def require_admin_or_teacher(
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
 ) -> User:
-    """Dependency that requires the user to be an admin or teacher."""
-    if current_user.is_superuser:
-        return current_user
-    if is_teacher(current_user, db):
+    role = get_role(current_user)
+    if role in (ROLE_ADMIN, ROLE_TEACHER):
         return current_user
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
@@ -111,9 +97,10 @@ def require_admin_or_teacher(
 
 
 def check_course_owner(user: User, course_id: int, db: Session) -> bool:
-    """Check if user is admin or owner of the specified course."""
-    if user.is_superuser:
+    if get_role(user) == ROLE_ADMIN:
         return True
+    if get_role(user) != ROLE_TEACHER:
+        return False
     from app.models.course import Course
     course = db.get(Course, course_id)
     if course is None:

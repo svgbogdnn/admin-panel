@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
-from app.core.security import get_current_user, require_admin, check_course_owner, require_admin_or_teacher
+from app.core.security import get_current_user, require_admin_or_teacher, require_admin, check_course_owner, ROLE_ADMIN, ROLE_TEACHER
 from app.models.course import Course
 from app.models.user import User
 from app.schemas.course import CourseCreate, CourseRead, CourseUpdate
@@ -21,6 +21,10 @@ def list_courses(
     query = db.query(Course)
     if is_active is not None:
         query = query.filter(Course.is_active == is_active)
+
+    if current_user.role == ROLE_TEACHER:
+        query = query.filter(Course.teacher_id == current_user.id)
+
     courses = query.order_by(Course.start_date.nulls_last()).all()
     return courses
 
@@ -34,6 +38,8 @@ def get_course(
     course = db.get(Course, course_id)
     if not course:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
+    if current_user.role == ROLE_TEACHER and course.teacher_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions")
     return course
 
 
@@ -41,13 +47,12 @@ def get_course(
 def create_course(
     course_in: CourseCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),  # Allow any user to create a course
+    current_user: User = Depends(require_admin_or_teacher),
 ) -> CourseRead:
-    # If user is not admin, they can only create courses for themselves
     teacher_id = course_in.teacher_id
-    if not current_user.is_superuser:
+    if current_user.role == ROLE_TEACHER:
         teacher_id = current_user.id
-    
+
     course = Course(
         name=course_in.name,
         description=course_in.description,
@@ -67,19 +72,15 @@ def update_course(
     course_id: int,
     course_in: CourseUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_admin_or_teacher),
 ) -> CourseRead:
     course = db.get(Course, course_id)
     if not course:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
-    
-    # Check permission: admin or course owner
-    if not check_course_owner(current_user, course_id, db):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You don't have permission to edit this course",
-        )
-    
+
+    if current_user.role == ROLE_TEACHER and not check_course_owner(current_user, course_id, db):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions")
+
     if course_in.name is not None:
         course.name = course_in.name
     if course_in.description is not None:
@@ -91,13 +92,10 @@ def update_course(
     if course_in.is_active is not None:
         course.is_active = course_in.is_active
     if course_in.teacher_id is not None:
-        # Only admin can change teacher_id
-        if not current_user.is_superuser:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Only admin can change course teacher",
-            )
+        if current_user.role != ROLE_ADMIN:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only admin can change course teacher")
         course.teacher_id = course_in.teacher_id
+
     db.add(course)
     db.commit()
     db.refresh(course)
@@ -108,10 +106,14 @@ def update_course(
 def delete_course(
     course_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),  # Admin only
+    current_user: User = Depends(require_admin_or_teacher),
 ) -> None:
     course = db.get(Course, course_id)
     if not course:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
+
+    if current_user.role == ROLE_TEACHER and course.teacher_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions")
+
     db.delete(course)
     db.commit()

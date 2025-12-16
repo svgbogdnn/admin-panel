@@ -1,17 +1,17 @@
 from datetime import date
-from fastapi import APIRouter, Depends, Query, Response
+
+from fastapi import APIRouter, Depends, Query, HTTPException, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 import csv
 import io
-import json
 
 from app.core.db import get_db
-from app.core.security import get_current_user
+from app.core.security import get_current_user, ROLE_ADMIN, ROLE_TEACHER
 from app.models.attendance import Attendance
+from app.models.course import Course
 from app.models.lesson import Lesson
 from app.models.user import User
-from app.schemas.attendance import AttendanceRead
 
 router = APIRouter(prefix="/export", tags=["export"])
 
@@ -26,7 +26,19 @@ def export_attendance(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    query = db.query(Attendance).join(User).join(Lesson)
+    query = (
+        db.query(Attendance)
+        .join(Lesson, Attendance.lesson_id == Lesson.id)
+        .join(Course, Lesson.course_id == Course.id)
+        .join(User, Attendance.student_id == User.id)
+    )
+
+    if current_user.role == ROLE_TEACHER:
+        query = query.filter(Course.teacher_id == current_user.id)
+
+    if current_user.role not in (ROLE_ADMIN, ROLE_TEACHER):
+        query = query.filter(Attendance.student_id == current_user.id)
+        student_id = None
 
     if course_id is not None:
         query = query.filter(Lesson.course_id == course_id)
@@ -42,37 +54,33 @@ def export_attendance(
     if response_format == "json":
         out = []
         for r in records:
-            out.append({
-                "ФИО студента": r.student.full_name or r.student.email,
-                "Курс": r.lesson.course.name if r.lesson and r.lesson.course else "",
-                "Дата занятия": str(r.lesson.date) if r.lesson else "",
-                "Статус": r.status.value
-            })
+            out.append(
+                {
+                    "ФИО студента": r.student.full_name or r.student.email,
+                    "Курс": r.lesson.course.name if r.lesson and r.lesson.course else "",
+                    "Дата занятия": str(r.lesson.date) if r.lesson else "",
+                    "Статус": r.status.value,
+                }
+            )
         return out
 
-    # CSV формат:
     stream = io.StringIO()
     writer = csv.writer(stream)
-    writer.writerow([
-        "ФИО студента",
-        "Курс",
-        "Дата занятия",
-        "Статус"
-    ])
+    writer.writerow(["ФИО студента", "Курс", "Дата занятия", "Статус"])
 
     for r in records:
-        writer.writerow([
-            r.student.full_name or r.student.email,
-            r.lesson.course.name if r.lesson and r.lesson.course else "",
-            r.lesson.date.isoformat() if r.lesson else "",
-            r.status.value
-        ])
+        writer.writerow(
+            [
+                r.student.full_name or r.student.email,
+                r.lesson.course.name if r.lesson and r.lesson.course else "",
+                r.lesson.date.isoformat() if r.lesson else "",
+                r.status.value,
+            ]
+        )
 
     stream.seek(0)
     return StreamingResponse(
         iter([stream.getvalue()]),
         media_type="text/csv",
-        headers={
-            "Content-Disposition": "attachment; filename=attendance_export.csv"
-        }
+        headers={"Content-Disposition": "attachment; filename=attendance_export.csv"},
     )
