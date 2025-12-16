@@ -88,6 +88,9 @@ export default function FeedbackPage() {
 
   const { user, role } = useAuth();
   const isAdmin = role === "admin";
+  const isTeacher = role === "teacher";
+  const canCreateFeedback = !isTeacher;
+  
 
   const courseNameById = useMemo(() => {
     const map = new Map<number, string>();
@@ -353,9 +356,11 @@ export default function FeedbackPage() {
             Обновить
           </Button>
 
-          <Button type="primary" icon={<PlusOutlined />} onClick={handleOpenCreate}>
-            Создать
-          </Button>
+          {canCreateFeedback && (
+            <Button type="primary" icon={<PlusOutlined />} onClick={handleOpenCreate}>
+              Создать
+            </Button>
+          )}
         </div>
       </div>
 
