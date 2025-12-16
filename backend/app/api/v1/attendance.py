@@ -181,3 +181,18 @@ def delete_attendance(
         )
     db.delete(record)
     db.commit()
+
+@router.patch("/attendance/{attendance_id}", response_model=AttendanceRead)
+def patch_attendance(attendance_id: int, attendance_in: AttendanceUpdate, db: Session = Depends(get_db)):
+    attendance = db.get(Attendance, attendance_id)
+    if not attendance:
+        raise HTTPException(status_code=404, detail="Attendance not found")
+
+    update_data = attendance_in.dict(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(attendance, field, value)
+
+    db.add(attendance)
+    db.commit()
+    db.refresh(attendance)
+    return attendance

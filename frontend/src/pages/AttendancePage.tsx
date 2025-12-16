@@ -3,9 +3,10 @@ import {
   Button,
   Card,
   DatePicker,
+  Form,
   Input,
+  Modal,
   Select,
-  Space,
   Table,
   Tag,
   Typography,
@@ -53,6 +54,11 @@ type FiltersState = {
   to_date?: string;
 };
 
+type EditFormValues = {
+  status: AttendanceStatus;
+  comment: string;
+};
+
 export default function AttendancePage() {
   const [records, setRecords] = useState<AttendanceRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -61,6 +67,20 @@ export default function AttendancePage() {
   const [courseOptions, setCourseOptions] = useState<{ value: number; label: string }[]>([]);
   const [studentOptions, setStudentOptions] = useState<{ value: number; label: string }[]>([]);
   const [q, setQ] = useState("");
+
+  const [editOpen, setEditOpen] = useState(false);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editing, setEditing] = useState<AttendanceRow | null>(null);
+  const [form] = Form.useForm<EditFormValues>();
+
+  const statusOptions = useMemo(
+    () =>
+      (Object.keys(statusLabel) as AttendanceStatus[]).map((s) => ({
+        value: s,
+        label: statusLabel[s],
+      })),
+    [],
+  );
 
   useEffect(() => {
     const loadCourses = async () => {
@@ -73,6 +93,7 @@ export default function AttendancePage() {
           })),
         );
       } catch {
+        message.destroy();
         message.error("Не удалось загрузить список курсов");
       }
     };
@@ -104,6 +125,7 @@ export default function AttendancePage() {
         })),
       );
     } catch {
+      message.destroy();
       message.error("Не удалось загрузить посещаемость");
     } finally {
       setLoading(false);
@@ -116,7 +138,6 @@ export default function AttendancePage() {
 
   const handleDateChange = (
     values: [Dayjs | null, Dayjs | null] | null,
-    _dateStrings: [string, string],
   ) => {
     const [start, end] = values ?? [];
     const next: FiltersState = {
@@ -140,19 +161,45 @@ export default function AttendancePage() {
     void loadAttendance(next);
   };
 
-  const toggleStatusValue = (status: AttendanceStatus): AttendanceStatus => {
-    if (status === "present") return "absent";
-    if (status === "absent") return "present";
-    return "present";
+  const openEdit = (record: AttendanceRow) => {
+    setEditing(record);
+    form.setFieldsValue({
+      status: record.status,
+      comment: (record.comment ?? "").toString(),
+    });
+    setEditOpen(true);
   };
 
-  const handleToggleStatus = async (record: AttendanceRow) => {
-    const newStatus = toggleStatusValue(record.status);
+  const closeEdit = () => {
+    setEditOpen(false);
+    setEditing(null);
+    form.resetFields();
+  };
+
+  const saveEdit = async () => {
+    if (!editing) return;
+
     try {
-      const updated = await updateAttendance(record.id, { status: newStatus });
-      setRecords((prev) => prev.map((r) => (r.id === record.id ? { ...r, ...updated } : r)));
-    } catch {
-      message.error("Не удалось обновить статус");
+      setEditSaving(true);
+      const values = await form.validateFields();
+      const trimmed = (values.comment ?? "").trim();
+
+      const updated = await updateAttendance(editing.id, {
+        status: values.status,
+        comment: trimmed.length ? trimmed : null,
+      });
+
+      setRecords((prev) => prev.map((r) => (r.id === editing.id ? { ...r, ...updated } : r)));
+
+      message.destroy();
+      message.success("Запись обновлена");
+      closeEdit();
+    } catch (err: any) {
+      if (err?.errorFields) return;
+      message.destroy();
+      message.error("Не удалось сохранить изменения");
+    } finally {
+      setEditSaving(false);
     }
   };
 
@@ -203,7 +250,8 @@ export default function AttendancePage() {
       key: "lesson_date",
       width: 130,
       className: "mono",
-      render: (value: string | null | undefined) => (value ? new Date(value).toLocaleDateString() : "—"),
+      render: (value: string | null | undefined) =>
+        value ? new Date(value).toLocaleDateString() : "—",
     },
     {
       title: "Статус",
@@ -214,7 +262,7 @@ export default function AttendancePage() {
         <Tag
           className="pill-tag"
           color={statusColor[record.status]}
-          onClick={() => handleToggleStatus(record)}
+          onClick={() => openEdit(record)}
           style={{ cursor: "pointer", userSelect: "none" }}
         >
           {statusLabel[record.status]}
@@ -225,12 +273,8 @@ export default function AttendancePage() {
       title: "",
       key: "actions",
       width: 60,
-      render: () => (
-        <Button
-          type="text"
-          icon={<EditOutlined />}
-          onClick={() => message.info("Точную форму редактирования статуса/комментария добавим позже")}
-        />
+      render: (_value, record) => (
+        <Button type="text" icon={<EditOutlined />} onClick={() => openEdit(record)} />
       ),
     },
   ];
@@ -242,6 +286,7 @@ export default function AttendancePage() {
           <Title level={2} style={{ margin: 0 }}>
             Посещаемость
           </Title>
+          <Text type="secondary">Фильтры сверху, быстрый поиск, и краткая статистика по выборке.</Text>
         </div>
       </div>
 
@@ -255,7 +300,7 @@ export default function AttendancePage() {
               style={{ width: 260 }}
               options={courseOptions}
               value={filters.course_id}
-              onChange={(value) => handleCourseChange(value as number | null)}
+              onChange={(value) => handleCourseChange(typeof value === "number" ? value : null)}
             />
             <Select
               placeholder="Студент"
@@ -263,7 +308,7 @@ export default function AttendancePage() {
               style={{ width: 260 }}
               options={studentOptions}
               value={filters.student_id}
-              onChange={(value) => handleStudentChange(value as number | null)}
+              onChange={(value) => handleStudentChange(typeof value === "number" ? value : null)}
             />
             <Input
               value={q}
@@ -313,6 +358,31 @@ export default function AttendancePage() {
           rowClassName={(_, index) => (index % 2 === 1 ? "row-zebra" : "")}
         />
       </Card>
+
+      <Modal
+        open={editOpen}
+        title="Редактирование посещаемости"
+        onCancel={closeEdit}
+        onOk={() => void saveEdit()}
+        okText="Сохранить"
+        cancelText="Отмена"
+        confirmLoading={editSaving}
+        destroyOnClose
+      >
+        <Form form={form} layout="vertical" preserve={false}>
+          <Form.Item name="status" label="Статус" rules={[{ required: true, message: "Выберите статус" }]}>
+            <Select options={statusOptions} />
+          </Form.Item>
+
+          <Form.Item
+            name="comment"
+            label="Комментарий"
+            rules={[{ max: 255, message: "Максимум 255 символов" }]}
+          >
+            <Input.TextArea autoSize={{ minRows: 3, maxRows: 6 }} placeholder="Опционально" />
+          </Form.Item>
+        </Form>
+      </Modal>
     </div>
   );
 }
