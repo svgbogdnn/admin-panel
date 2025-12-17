@@ -7,8 +7,10 @@ from .lessons import router as lessons_router
 from .attendance import router as attendance_router
 from .feedback import router as feedback_router
 from .export import router as export_router
+from app.api.v1.analytics import router as analytics_router
 
 router = APIRouter()
+
 router.include_router(auth_router)
 router.include_router(users_router)
 router.include_router(courses_router)
@@ -16,3 +18,4 @@ router.include_router(lessons_router)
 router.include_router(attendance_router)
 router.include_router(feedback_router)
 router.include_router(export_router)
+router.include_router(analytics_router)
