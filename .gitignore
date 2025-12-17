@@ -9,3 +9,9 @@ backend/.env
 .idea/
 .DS_Store
 Thumbs.db
+.env
+.env.* 
+!.env.example
+*.pyc
+app.db
+alembic/versions/__pycache__/
