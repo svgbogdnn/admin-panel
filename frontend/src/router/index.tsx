@@ -12,6 +12,7 @@ import AttendancePage from "../pages/AttendancePage";
 import FeedbackPage from "../pages/FeedbackPage";
 import ExportPage from "../pages/ExportPage";
 import ProfilePage from "../pages/ProfilePage";
+import AnalyticsPage from "../pages/AnalyticsPage";
 
 function hasToken() {
   const token = localStorage.getItem("access_token");
@@ -51,6 +52,8 @@ export default function AppRouter() {
         <Route path="attendance" element={<AttendancePage />} />
         <Route path="feedback" element={<FeedbackPage />} />
         <Route path="export" element={<ExportPage />} />
+
+        <Route path="analytics" element={<AnalyticsPage />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/login" replace />} />

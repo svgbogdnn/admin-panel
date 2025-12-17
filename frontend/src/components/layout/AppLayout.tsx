@@ -18,6 +18,7 @@ const menuItems: MenuItem[] = [
   getItem("Посещаемость", "/attendance"),
   getItem("Фидбэк", "/feedback"),
   getItem("Экспорт", "/export"),
+  getItem("Аналитика", "/analytics"),
 ];
 
 function getBgClass(pathname: string): string {
@@ -25,6 +26,7 @@ function getBgClass(pathname: string): string {
   if (pathname.startsWith("/attendance")) return "page-bg--attendance";
   if (pathname.startsWith("/feedback")) return "page-bg--feedback";
   if (pathname.startsWith("/export")) return "page-bg--export";
+  if (pathname.startsWith("/analytics")) return "page-bg--analytics";
   if (pathname.startsWith("/profile")) return "page-bg--profile";
   return "page-bg--default";
 }
