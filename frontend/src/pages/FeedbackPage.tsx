@@ -18,6 +18,7 @@ import {
 import type { ColumnsType } from "antd/es/table";
 import Table from "antd/es/table";
 import {
+  EditOutlined,
   EyeInvisibleOutlined,
   EyeOutlined,
   FilterOutlined,
@@ -28,8 +29,8 @@ import {
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 
-import type { Feedback, FeedbackCreate } from "../api/feedback";
-import { createFeedbackItem, getFeedback } from "../api/feedback";
+import type { Feedback, FeedbackCreate, FeedbackUpdate } from "../api/feedback";
+import { createFeedbackItem, getFeedback, updateFeedbackItem } from "../api/feedback";
 import type { Course } from "../api/courses";
 import { getCourses } from "../api/courses";
 import type { Lesson } from "../api/lessons";
@@ -48,21 +49,15 @@ type CreateFormValues = FeedbackCreate & {
 type CourseOption = { value: number; label: string };
 type LessonOption = { value: number; label: string };
 
-function normalizeText(v: unknown): string {
-  return String(v ?? "").trim().toLowerCase();
-}
-
-function formatDate(value?: string | null): string {
+function formatDate(value: string | Date | undefined | null) {
   if (!value) return "—";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleDateString();
+  const d = dayjs(value);
+  if (!d.isValid()) return "—";
+  return d.format("DD.MM.YYYY");
 }
 
-function resolveDateValue(item: Feedback): number {
-  const raw = (item as any).lesson_date ?? (item as any).created_at ?? null;
-  const d = raw ? new Date(raw) : null;
-  return d && !Number.isNaN(d.getTime()) ? d.getTime() : 0;
+function safeText(v: unknown) {
+  return String(v ?? "").trim().toLowerCase();
 }
 
 export default function FeedbackPage() {
@@ -85,12 +80,16 @@ export default function FeedbackPage() {
   const [selectedCourseId, setSelectedCourseId] = useState<number | undefined>();
 
   const [form] = Form.useForm<CreateFormValues>();
+  const [editForm] = Form.useForm<FeedbackUpdate>();
 
   const { user, role } = useAuth();
   const isAdmin = role === "admin";
   const isTeacher = role === "teacher";
   const canCreateFeedback = !isTeacher;
-  
+
+  const [editVisible, setEditVisible] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editingItem, setEditingItem] = useState<Feedback | null>(null);
 
   const courseNameById = useMemo(() => {
     const map = new Map<number, string>();
@@ -101,7 +100,7 @@ export default function FeedbackPage() {
   const loadFeedback = async () => {
     setLoading(true);
     try {
-      const data = await getFeedback({ include_hidden: includeHidden });
+      const data = await getFeedback({ include_hidden: isAdmin ? includeHidden : false });
       setItems(data);
     } catch {
       message.error("Не удалось загрузить фидбэк");
@@ -132,92 +131,127 @@ export default function FeedbackPage() {
   const loadLessonsForCourse = async (courseId: number) => {
     try {
       const data: Lesson[] = await getLessons({ course_id: courseId });
-      setLessonOptions(
-        data.map((l) => ({
+      const options: LessonOption[] = data
+        .map((l) => ({
           value: l.id,
-          label: `${l.topic || "Урок"}${l.date ? ` — ${l.date}` : ""}`,
-        })),
-      );
+          label: `${formatDate((l as any).date)} — ${(l as any).topic || `Урок #${l.id}`}`,
+        }))
+        .sort((a, b) => a.label.localeCompare(b.label, "ru"));
+      setLessonOptions(options);
     } catch {
-      message.error("Не удалось загрузить список уроков");
+      message.error("Не удалось загрузить уроки");
       setLessonOptions([]);
     }
   };
 
   useEffect(() => {
     void loadFeedback();
-  }, [includeHidden]);
-
-  useEffect(() => {
     void loadCourses();
   }, []);
 
+  useEffect(() => {
+    void loadFeedback();
+  }, [includeHidden]);
+
   const filtered = useMemo(() => {
-    const query = normalizeText(q);
-    const courseNameFilter = courseFilterId ? courseNameById.get(courseFilterId) ?? "" : "";
+    const query = q.trim().toLowerCase();
 
     const base = items.filter((it) => {
-      if (courseFilterId) {
-        const cn = normalizeText((it as any).course_name);
-        if (normalizeText(courseNameFilter) && cn !== normalizeText(courseNameFilter)) return false;
-      }
-
-      if (ratingFilter !== "all") {
-        const r = Number((it as any).rating ?? 0);
-        if (ratingFilter === "5" && r !== 5) return false;
-        if (ratingFilter === "4plus" && r < 4) return false;
-        if (ratingFilter === "3plus" && r < 3) return false;
-        if (ratingFilter === "2minus" && r > 2) return false;
-      }
-
-      if (!query) return true;
-
-      const student = normalizeText((it as any).student_name ?? (it as any).student_full_name ?? it.student_id);
-      const course = normalizeText((it as any).course_name);
-      const lesson = normalizeText((it as any).lesson_topic);
-      const comment = normalizeText((it as any).comment);
-      const date = normalizeText((it as any).lesson_date ?? (it as any).created_at);
-
-      return (
-        student.includes(query) ||
-        course.includes(query) ||
-        lesson.includes(query) ||
-        comment.includes(query) ||
-        date.includes(query)
-      );
+      if (!courseFilterId) return true;
+      const courseName = (it as any).course_name || courseNameById.get(courseFilterId) || "";
+      const itCourseName = (it as any).course_name || courseNameById.get((it as any).course_id) || "";
+      return safeText(itCourseName) === safeText(courseName) || (it as any).course_id === courseFilterId;
     });
 
-    const sorted = [...base].sort((a, b) => {
-      const da = resolveDateValue(a);
-      const db = resolveDateValue(b);
-      const ra = Number((a as any).rating ?? 0);
-      const rb = Number((b as any).rating ?? 0);
+    const byRating = base.filter((it) => {
+      const r = Number((it as any).rating ?? 0);
+      if (ratingFilter === "all") return true;
+      if (ratingFilter === "5") return r >= 4.75;
+      if (ratingFilter === "4plus") return r >= 4.0;
+      if (ratingFilter === "3plus") return r >= 3.0;
+      if (ratingFilter === "2minus") return r <= 2.0;
+      return true;
+    });
 
-      if (sortMode === "newest") return db - da;
-      if (sortMode === "oldest") return da - db;
-      if (sortMode === "rating_desc") return rb - ra || (db - da);
-      return ra - rb || (db - da);
+    const byQuery = byRating.filter((it) => {
+      if (!query) return true;
+
+      const student = safeText((it as any).student_name || (it as any).student_full_name || it.student_id);
+      const course = safeText((it as any).course_name || courseNameById.get((it as any).course_id));
+      const lesson = safeText((it as any).lesson_topic || (it as any).topic);
+      const comment = safeText((it as any).comment);
+
+      return student.includes(query) || course.includes(query) || lesson.includes(query) || comment.includes(query);
+    });
+
+    const sorted = [...byQuery].sort((a, b) => {
+      const aDate = dayjs((a as any).created_at || (a as any).lesson_date);
+      const bDate = dayjs((b as any).created_at || (b as any).lesson_date);
+      const aRating = Number((a as any).rating ?? 0);
+      const bRating = Number((b as any).rating ?? 0);
+
+      if (sortMode === "newest") return bDate.valueOf() - aDate.valueOf();
+      if (sortMode === "oldest") return aDate.valueOf() - bDate.valueOf();
+      if (sortMode === "rating_desc") return bRating - aRating;
+      if (sortMode === "rating_asc") return aRating - bRating;
+      return 0;
     });
 
     return sorted;
-  }, [items, q, sortMode, ratingFilter, courseFilterId, courseNameById]);
+  }, [items, q, ratingFilter, sortMode, courseFilterId, courseNameById]);
 
   const stats = useMemo(() => {
     const total = filtered.length;
-    const hidden = filtered.filter((x) => !!(x as any).is_hidden).length;
-    const sum = filtered.reduce((acc, x) => acc + Number((x as any).rating ?? 0), 0);
-    const avg = total > 0 ? sum / total : 0;
-
-    const now = dayjs();
-    const last7 = filtered.filter((x) => {
-      const t = resolveDateValue(x);
-      if (!t) return false;
-      const d = dayjs(t);
-      return d.isValid() && d.isAfter(now.subtract(7, "day"));
+    const sum = filtered.reduce((acc, it) => acc + Number((it as any).rating ?? 0), 0);
+    const avg = total ? sum / total : 0;
+    const hidden = filtered.filter((it) => !!(it as any).is_hidden).length;
+    const last7 = filtered.filter((it) => {
+      const d = dayjs((it as any).created_at || (it as any).lesson_date);
+      return d.isValid() && d.isAfter(dayjs().subtract(7, "day"));
     }).length;
-
-    return { total, hidden, avg, last7 };
+    return { total, avg, hidden, last7 };
   }, [filtered]);
+
+  function canEditFeedbackRow(record: Feedback) {
+    if (isTeacher) return false;
+    if (isAdmin) return true;
+    if (!user) return false;
+    return record.student_id === user.id;
+  }
+
+  function handleOpenEdit(record: Feedback) {
+    if (!canEditFeedbackRow(record)) return;
+    setEditingItem(record);
+    editForm.resetFields();
+    editForm.setFieldsValue({
+      rating: Number((record as any).rating ?? 0),
+      comment: (record as any).comment ?? null,
+      ...(isAdmin ? { is_hidden: !!(record as any).is_hidden } : {}),
+    } as any);
+    setEditVisible(true);
+  }
+
+  async function handleUpdate() {
+    if (!editingItem) return;
+    setEditing(true);
+    try {
+      const values = await editForm.validateFields();
+      const payload: FeedbackUpdate = {
+        rating: Number(values.rating),
+        comment: (values as any).comment ?? null,
+        ...(isAdmin ? { is_hidden: !!(values as any).is_hidden } : {}),
+      };
+      const updated = await updateFeedbackItem(editingItem.id, payload);
+      setItems((prev) => prev.map((it) => (it.id === updated.id ? updated : it)));
+      setEditVisible(false);
+      setEditingItem(null);
+      message.success("Фидбэк обновлён");
+    } catch {
+      message.error("Не удалось обновить фидбэк");
+    } finally {
+      setEditing(false);
+    }
+  }
 
   const columns: ColumnsType<Feedback> = [
     {
@@ -248,7 +282,7 @@ export default function FeedbackPage() {
         const v = String(value ?? "").trim();
         if (!v) return <Text type="secondary">—</Text>;
         return (
-          <Text type="secondary" ellipsis={{ tooltip: v }}>
+          <Text title={v} style={{ display: "inline-block", maxWidth: 520 }}>
             {v}
           </Text>
         );
@@ -256,21 +290,19 @@ export default function FeedbackPage() {
     },
     {
       title: "Курс",
-      dataIndex: "course_name",
-      key: "course_name",
+      key: "course",
       ellipsis: true,
-      width: 260,
-      render: (value: string | null | undefined) =>
-        value ? value : <Text type="secondary">—</Text>,
+      render: (_: unknown, record: Feedback) => {
+        const name = (record as any).course_name || courseNameById.get((record as any).course_id);
+        return name ? name : <Text type="secondary">—</Text>;
+      },
     },
     {
       title: "Урок",
-      dataIndex: "lesson_topic",
-      key: "lesson_topic",
+      key: "lesson",
       ellipsis: true,
-      width: 260,
-      render: (value: string | null | undefined) =>
-        value ? value : <Text type="secondary">—</Text>,
+      render: (_: unknown, record: Feedback) =>
+        (record as any).lesson_topic || (record as any).topic || <Text type="secondary">—</Text>,
     },
     {
       title: "Дата",
@@ -297,6 +329,19 @@ export default function FeedbackPage() {
         );
       },
     },
+    {
+      title: "Действия",
+      key: "actions",
+      width: 140,
+      render: (_: unknown, record: Feedback) => {
+        if (!canEditFeedbackRow(record)) return <Text type="secondary">—</Text>;
+        return (
+          <Button size="small" icon={<EditOutlined />} onClick={() => handleOpenEdit(record)}>
+            Изменить
+          </Button>
+        );
+      },
+    },
   ];
 
   const handleOpenCreate = () => {
@@ -316,21 +361,16 @@ export default function FeedbackPage() {
   const handleCreate = async () => {
     try {
       const values = await form.validateFields();
+      setCreating(true);
 
       const payload: FeedbackCreate = {
         lesson_id: values.lesson_id,
-        student_id: values.student_id ?? user?.id,
-        rating: values.rating,
-        comment: values.comment,
-        is_hidden: values.is_hidden ?? false,
+        student_id: isAdmin ? values.student_id : user?.id,
+        rating: Number(values.rating),
+        comment: values.comment ?? null,
+        is_hidden: !!values.is_hidden,
       };
 
-      if (!payload.student_id) {
-        message.error("Ошибка: не удалось определить ID студента");
-        return;
-      }
-
-      setCreating(true);
       const created = await createFeedbackItem(payload);
       setItems((prev) => [created, ...prev]);
       setCreateVisible(false);
@@ -373,11 +413,10 @@ export default function FeedbackPage() {
               allowClear
               prefix={<SearchOutlined />}
               placeholder="Поиск: студент, курс, урок, комментарий"
-              style={{ width: 360 }}
+              style={{ width: 320 }}
             />
 
             <Select
-              allowClear
               placeholder="Курс"
               style={{ width: 260 }}
               value={courseFilterId}
@@ -386,6 +425,7 @@ export default function FeedbackPage() {
               onChange={(v) => setCourseFilterId(typeof v === "number" ? v : undefined)}
               showSearch
               optionFilterProp="label"
+              allowClear
             />
 
             <Select
@@ -417,10 +457,12 @@ export default function FeedbackPage() {
           </div>
 
           <div className="table-toolbar-right">
-            <Space size={10} align="center">
-              <Text type="secondary">Показывать скрытые</Text>
-              <Switch checked={includeHidden} onChange={setIncludeHidden} />
-            </Space>
+            {isAdmin && (
+              <Space size={10} align="center">
+                <Text type="secondary">Показывать скрытые</Text>
+                <Switch checked={includeHidden} onChange={setIncludeHidden} />
+              </Space>
+            )}
           </div>
         </div>
 
@@ -443,15 +485,12 @@ export default function FeedbackPage() {
           </div>
         </div>
 
-        <Table<Feedback>
-          className="data-table"
-          rowKey={(r) => String((r as any).id ?? `${r.student_id}_${resolveDateValue(r)}`)}
-          dataSource={filtered}
+        <Table
+          rowKey={(r) => r.id}
           columns={columns}
+          dataSource={filtered}
           loading={loading}
-          tableLayout="fixed"
-          pagination={{ pageSize: 12, showSizeChanger: false }}
-          rowClassName={(_, index) => (index % 2 === 1 ? "row-zebra" : "")}
+          pagination={{ pageSize: 10, showSizeChanger: false }}
           locale={{
             emptyText: (
               <Empty
@@ -469,14 +508,14 @@ export default function FeedbackPage() {
       <Modal
         open={createVisible}
         title="Создать фидбэк"
-        okText="Сохранить"
-        cancelText="Отмена"
-        onOk={handleCreate}
         onCancel={() => setCreateVisible(false)}
+        okText="Создать"
+        cancelText="Отмена"
         confirmLoading={creating}
+        onOk={() => void handleCreate()}
         destroyOnClose
       >
-        <Form<CreateFormValues> form={form} layout="vertical" initialValues={{ rating: 5, is_hidden: false }}>
+        <Form form={form} layout="vertical" initialValues={{ rating: 5, is_hidden: false }}>
           {isAdmin && (
             <Form.Item
               label="Студент ID"
@@ -494,10 +533,9 @@ export default function FeedbackPage() {
           >
             <Select
               placeholder="Выберите курс"
-              options={courseOptions}
               loading={coursesLoading}
-              onChange={handleCourseChange}
-              value={selectedCourseId}
+              options={courseOptions}
+              onChange={(v) => handleCourseChange(Number(v))}
               showSearch
               optionFilterProp="label"
             />
@@ -510,8 +548,8 @@ export default function FeedbackPage() {
           >
             <Select
               placeholder={selectedCourseId ? "Выберите урок" : "Сначала выберите курс"}
-              options={lessonOptions}
               disabled={!selectedCourseId}
+              options={lessonOptions}
               showSearch
               optionFilterProp="label"
             />
@@ -534,9 +572,41 @@ export default function FeedbackPage() {
           </Form.Item>
 
           {!isAdmin && (
-            <Text type="secondary">
-              Фидбэк будет создан от имени текущего пользователя.
-            </Text>
+            <Text type="secondary">Фидбэк будет создан от имени текущего пользователя.</Text>
+          )}
+        </Form>
+      </Modal>
+
+      <Modal
+        open={editVisible}
+        title="Редактировать фидбэк"
+        onCancel={() => {
+          setEditVisible(false);
+          setEditingItem(null);
+        }}
+        okText="Сохранить"
+        cancelText="Отмена"
+        confirmLoading={editing}
+        onOk={() => void handleUpdate()}
+        destroyOnClose
+      >
+        <Form form={editForm} layout="vertical">
+          <Form.Item
+            label="Оценка"
+            name="rating"
+            rules={[{ required: true, message: "Укажите оценку" }]}
+          >
+            <Rate allowHalf />
+          </Form.Item>
+
+          <Form.Item label="Комментарий" name="comment">
+            <Input.TextArea rows={4} placeholder="Что понравилось / что улучшить" />
+          </Form.Item>
+
+          {isAdmin && (
+            <Form.Item label="Скрытый" name="is_hidden" valuePropName="checked">
+              <Switch />
+            </Form.Item>
           )}
         </Form>
       </Modal>

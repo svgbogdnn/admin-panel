@@ -16,7 +16,7 @@ export interface Feedback {
 
 export interface FeedbackCreate {
   lesson_id: number;
-  student_id: number;
+  student_id?: number;
   rating: number;
   comment?: string | null;
   is_hidden?: boolean;
@@ -28,35 +28,21 @@ export interface FeedbackUpdate {
   is_hidden?: boolean;
 }
 
-export async function getFeedback(params?: {
-  lesson_id?: number;
-  course_id?: number;
+export interface FeedbackQueryParams {
   include_hidden?: boolean;
-}): Promise<Feedback[]> {
-  const response = await api.get<Feedback[]>("/feedback", { params });
-  return response.data;
 }
 
-export async function getFeedbackItem(id: number): Promise<Feedback> {
-  const response = await api.get<Feedback>(`/feedback/${id}`);
-  return response.data;
+export async function getFeedback(params?: FeedbackQueryParams): Promise<Feedback[]> {
+  const response = await api.get("/feedback", { params });
+  return response.data as Feedback[];
 }
 
-export async function createFeedbackItem(
-  payload: FeedbackCreate
-): Promise<Feedback> {
-  const response = await api.post<Feedback>("/feedback", payload);
-  return response.data;
+export async function createFeedbackItem(payload: FeedbackCreate): Promise<Feedback> {
+  const response = await api.post("/feedback", payload);
+  return response.data as Feedback;
 }
 
-export async function updateFeedbackItem(
-  id: number,
-  payload: FeedbackUpdate
-): Promise<Feedback> {
-  const response = await api.patch<Feedback>(`/feedback/${id}`, payload);
-  return response.data;
-}
-
-export async function deleteFeedbackItem(id: number): Promise<void> {
-  await api.delete(`/feedback/${id}`);
+export async function updateFeedbackItem(feedbackId: number, payload: FeedbackUpdate): Promise<Feedback> {
+  const response = await api.patch(`/feedback/${feedbackId}`, payload);
+  return response.data as Feedback;
 }
