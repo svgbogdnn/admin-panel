@@ -68,3 +68,37 @@ export async function getAnalyticsOverview(params: AnalyticsParams = {}): Promis
   const response = await api.get("/analytics/overview", { params });
   return response.data as AnalyticsOverview;
 }
+
+export interface AnalyticsRiskParams extends AnalyticsParams {
+  k?: number;
+  limit?: number;
+}
+
+export interface AnalyticsRiskRow {
+  student_id: number;
+  student_name: string;
+  course_id: number;
+  course_name: string;
+  total_records: number;
+  window_size: number;
+  recent_absent_rate: number;
+  absent_streak: number;
+  risk_absent_next: number;
+  model: string;
+  confidence: number;
+}
+
+export interface AnalyticsRiskResponse {
+  role: "admin" | "teacher" | "student";
+  scope: "overall" | "personal";
+  algorithm: string;
+  trained: boolean;
+  training_samples: number;
+  features: string[];
+  rows: AnalyticsRiskRow[];
+}
+
+export async function getAnalyticsRisk(params: AnalyticsRiskParams = {}): Promise<AnalyticsRiskResponse> {
+  const response = await api.get("/analytics/risk", { params });
+  return response.data as AnalyticsRiskResponse;
+}
