@@ -1,4 +1,7 @@
-from datetime import date, time
+'''Импорты и параметры демо'''
+from datetime import date, time, timedelta
+import random
+
 
 from app.core.db import Base, SessionLocal, engine
 from app.core.security import get_password_hash, ROLE_ADMIN, ROLE_TEACHER, ROLE_STUDENT
@@ -8,12 +11,23 @@ from app.models.feedback import Feedback
 from app.models.lesson import Lesson
 from app.models.user import User
 
+DEMO_COURSES = 5
+LESSONS_PER_COURSE = 10
+STUDENTS_PER_COURSE = 25
+
+SEED_LESSONS = 42
+SEED_ATTENDANCE = 1337
+SEED_FEEDBACK = 2025
+
+FEEDBACK_TARGET = 300
+FEEDBACK_STUDENTS = 40
 
 def run_seed() -> None:
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
 
     db = SessionLocal()
+    ''' Данные пользователей (admin/teachers/students) '''
     try:
         admin_data = [
             {
@@ -1304,6 +1318,7 @@ def run_seed() -> None:
             }
         ]
 
+        ''' Создание пользователей в БД + алиасы преподавателей '''
         users = {}
 
         for data in admin_data + teacher_data + student_data:
@@ -1326,6 +1341,7 @@ def run_seed() -> None:
 
         db.commit()
 
+        ''' Курсы: список courses_data + вставка в БД '''
         teacher_b = users["b@b.com"]
         teacher_irina = users["teacher.irina@example.com"]
         teacher_gromov = users["teacher.alexey.gromov@example.com"]
@@ -1643,6 +1659,8 @@ def run_seed() -> None:
 
         db.commit()
 
+
+        ''' План уроков lessons_plan (темы/даты/аудитории) '''
         lessons_plan = [
             ("Лекция 1: Архитектуры AI-агентов — роли, память, планирование, контроль выполнения", date(2025, 10, 13), "Аудитория 210"),
             ("Семинар 1: Декомпозиция задач агента — план, критерии остановки, анти-циклы и fallback", date(2025, 10, 20), "Аудитория 210"),
@@ -1794,39 +1812,61 @@ def run_seed() -> None:
             ("Семинар 50: Репетиция защиты — демонстрация сценариев, отчёт экспериментов, риск-регистр и план эксплуатации", date(2026, 4, 30), "Аудитория 507"),
         ]
 
-
+        ''' Генерация уроков (Lesson) по курсам '''
         lessons = []
-        for course, (topic1, d1, room1), (topic2, d2, room2) in zip(courses, lessons_plan[0::2], lessons_plan[1::2]):
-            l1 = Lesson(
-                course_id=course.id,
-                topic=topic1,
-                date=d1,
-                room=room1,
-                start_time=time(10, 0),
-                end_time=time(11, 30),
-            )
-            db.add(l1)
-            db.flush()
-            lessons.append(l1)
+        rng_lessons = random.Random(SEED_LESSONS)
 
-            l2 = Lesson(
-                course_id=course.id,
-                topic=topic2,
-                date=d2,
-                room=room2,
-                start_time=time(10, 0),
-                end_time=time(11, 30),
-            )
-            db.add(l2)
-            db.flush()
-            lessons.append(l2)
+        demo_course_ids = {c.id for c in courses[:DEMO_COURSES]}
+
+        for course in courses:
+            n_lessons = LESSONS_PER_COURSE if course.id in demo_course_ids else 2
+            base_date = course.start_date
+
+            for n in range(n_lessons):
+                topic, _, room = lessons_plan[(course.id + n) % len(lessons_plan)]
+                d = base_date + timedelta(days=7 * n)
+
+                slot = rng_lessons.randrange(3)
+                if slot == 0:
+                    st, et = time(9, 0), time(10, 30)
+                elif slot == 1:
+                    st, et = time(10, 0), time(11, 30)
+                else:
+                    st, et = time(11, 0), time(12, 30)
+
+                l = Lesson(
+                    course_id=course.id,
+                    topic=topic,
+                    date=d,
+                    room=room,
+                    start_time=st,
+                    end_time=et,
+                )
+                db.add(l)
+                db.flush()
+                lessons.append(l)
 
         db.commit()
 
-        students = sorted(
+        ''' Посещаемость (Attendance): выбор студентов, статусы, генерация отметок '''
+        rng_att = random.Random(SEED_ATTENDANCE)
+
+        all_students = sorted(
             [u for u in users.values() if u.role == ROLE_STUDENT],
-            key=lambda u: u.email,
-        )[:25]
+            key=lambda u: u.id,
+        )
+
+        demo_courses = courses[:DEMO_COURSES]
+        demo_course_ids = {c.id for c in demo_courses}
+
+        students_by_course = {}
+
+        k_students = min(STUDENTS_PER_COURSE, len(all_students))
+        for c in demo_courses:
+            students_by_course[c.id] = rng_att.sample(all_students, k=k_students)
+
+        students = all_students[:k_students]
+
 
         status_matrix = [
             (AttendanceStatus.present, "Присутствовал, активно участвовал в обсуждении, задавал вопросы."),
@@ -1850,35 +1890,116 @@ def run_seed() -> None:
             (AttendanceStatus.excused, "Отсутствовал по уважительной причине (оформление документов)."),
         ]
 
-        target = 100
-        created = 0
 
-        for i, lesson in enumerate(lessons):
-            for j, student in enumerate(students):
-                st, comment = status_matrix[(i * 7 + j * 3) % len(status_matrix)]
-                a = Attendance(
-                    lesson_id=lesson.id,
-                    student_id=student.id,
-                    status=st,
-                    comment=comment,
-                )
-                db.add(a)
-                created += 1
-                if created >= target:
-                    break
-            if created >= target:
-                break
+
+        demo_course_ids = set(students_by_course.keys())
+
+        lessons_by_course = {}
+        for lesson in lessons:
+            if lesson.course_id in demo_course_ids:
+                lessons_by_course.setdefault(lesson.course_id, []).append(lesson)
+
+        comments_by_status = {}
+        for st, comment in status_matrix:
+            comments_by_status.setdefault(st, []).append(comment)
+
+        rng_status = random.Random(SEED_ATTENDANCE + 99)
+
+        profile = {}
+        for s in all_students:
+            r = rng_status.random()
+            if r < 0.10:
+                profile[s.id] = (0.55, 0.10, 0.25, 0.10)
+            elif r < 0.35:
+                profile[s.id] = (0.78, 0.10, 0.08, 0.04)
+            else:
+                profile[s.id] = (0.90, 0.06, 0.03, 0.01)
+
+        def pick_status(student_id, is_event, last_status, streak_absent, streak_late):
+            p_present, p_late, p_absent, p_excused = profile[student_id]
+
+            w_present = p_present
+            w_late = p_late
+            w_absent = p_absent
+            w_excused = p_excused
+
+            if is_event:
+                w_present *= 0.75
+                w_late *= 1.25
+                w_absent *= 1.60
+                w_excused *= 1.10
+
+            if last_status == AttendanceStatus.absent:
+                w_present *= 0.65
+                w_absent *= (1.40 + 0.20 * min(streak_absent, 3))
+                w_late *= 1.05
+
+            if last_status == AttendanceStatus.late:
+                w_present *= 0.80
+                w_late *= (1.25 + 0.10 * min(streak_late, 3))
+                w_absent *= 1.10
+
+            total = w_present + w_late + w_absent + w_excused
+            x = rng_status.random() * total
+
+            if x < w_present:
+                return AttendanceStatus.present
+            x -= w_present
+            if x < w_late:
+                return AttendanceStatus.late
+            x -= w_late
+            if x < w_absent:
+                return AttendanceStatus.absent
+            return AttendanceStatus.excused
+
+        for course_id, course_lessons in lessons_by_course.items():
+            course_lessons = sorted(course_lessons, key=lambda x: x.date)
+            course_students = students_by_course.get(course_id, [])
+            if not course_students:
+                continue
+
+            event_k = 2 if len(course_lessons) >= 9 else 1
+            event_idxs = set(rng_status.sample(range(len(course_lessons)), k=event_k))
+
+            for student in course_students:
+                last = None
+                streak_absent = 0
+                streak_late = 0
+
+                for idx, lesson in enumerate(course_lessons):
+                    st = pick_status(
+                        student.id,
+                        idx in event_idxs,
+                        last,
+                        streak_absent,
+                        streak_late,
+                    )
+
+                    comment = rng_status.choice(comments_by_status[st])
+
+                    a = Attendance(
+                        lesson_id=lesson.id,
+                        student_id=student.id,
+                        status=st,
+                        comment=comment,
+                    )
+                    db.add(a)
+
+                    if st == AttendanceStatus.absent:
+                        streak_absent += 1
+                        streak_late = 0
+                    elif st == AttendanceStatus.late:
+                        streak_late += 1
+                        streak_absent = 0
+                    else:
+                        streak_absent = 0
+                        streak_late = 0
+
+                    last = st
 
         db.commit()
 
-
-        students_for_feedback = sorted(
-            [u for u in users.values() if u.role == ROLE_STUDENT],
-            key=lambda u: u.email,
-        )[:5]  
-
-        lessons_for_feedback = lessons[:20]
-
+        ''' Фидбек (Feedback): шаблоны, рейтинги, комменты, генерация записей '''
         feedback_samples = [
             (4.9, "Очень структурная подача: цели, метрики и ограничения обозначены заранее. Хороший акцент на воспроизводимость."),
             (4.6, "Понравилось, что показали типовые сбои агента (циклы/ошибки инструментов) и способы диагностики через логи."),
@@ -1906,28 +2027,96 @@ def run_seed() -> None:
             (4.0, "Материал хороший, но нужно больше времени на вопросы и обсуждение альтернативных подходов."),
         ]
 
-        created = 0
+        rng_fb = random.Random(SEED_FEEDBACK)
+
+        demo_course_ids = {c.id for c in courses[:DEMO_COURSES]}
+
+        demo_lessons = [l for l in lessons if l.course_id in demo_course_ids]
+        demo_lessons = sorted(demo_lessons, key=lambda x: (x.course_id, x.date, x.id))
+
+        demo_students_map = {}
+        for cid, lst in students_by_course.items():
+            for s in lst:
+                demo_students_map[s.id] = s
+        demo_students = sorted(demo_students_map.values(), key=lambda u: u.id)
+
+        students_for_feedback = demo_students[: min(FEEDBACK_STUDENTS, len(demo_students))]
+        lessons_for_feedback = demo_lessons
+
+        base_comments = [c for _, c in feedback_samples]
+
+        prefixes = [
+            "",
+            "В целом: ",
+            "Коротко: ",
+            "По делу: ",
+            "Если честно: ",
+            "Из плюсов: ",
+            "Наблюдение: ",
+        ]
+
+        suffixes = [
+            "",
+            " Хотелось бы больше практики.",
+            " Было бы круто добавить больше примеров.",
+            " Спасибо за разбор ошибок.",
+            " Полезно для проекта.",
+            " Темп местами высокий.",
+            " Хорошо бы дать чек-лист после занятия.",
+        ]
+
+        def gen_comment():
+            base = rng_fb.choice(base_comments)
+            pre = rng_fb.choice(prefixes) if rng_fb.random() < 0.35 else ""
+            suf = rng_fb.choice(suffixes) if rng_fb.random() < 0.35 else ""
+            return (pre + base + suf).strip()
+
+        created_fb = 0
         k = 0
 
-        for lesson in lessons_for_feedback:
-            for student in students_for_feedback:
-                rating, comment = feedback_samples[k % len(feedback_samples)]
-                k += 1
+        if lessons_for_feedback and students_for_feedback:
+            for lesson in lessons_for_feedback:
+                for student in students_for_feedback:
+                    if rng_fb.random() < 0.35:
+                        continue
 
-                f = Feedback(
-                    lesson_id=lesson.id,
-                    student_id=student.id,
-                    rating=rating,
-                    comment=comment,
-                    is_hidden=False,
-                )
-                db.add(f)
-                created += 1
+                    base_rating, _ = feedback_samples[k % len(feedback_samples)]
+                    k += 1
 
-                if created >= 100:
+                    p = profile.get(student.id)
+                    if p:
+                        p_present = p[0]
+                        if p_present < 0.70:
+                            mu = min(base_rating, 4.2) - 0.2
+                        elif p_present < 0.85:
+                            mu = min(base_rating, 4.6)
+                        else:
+                            mu = max(base_rating, 4.3)
+                    else:
+                        mu = base_rating
+
+                    if rng_fb.random() < 0.07:
+                        mu -= rng_fb.uniform(0.6, 1.0)
+                    if rng_fb.random() < 0.06:
+                        mu += rng_fb.uniform(0.2, 0.5)
+
+                    rating = round(max(1.0, min(5.0, rng_fb.gauss(mu, 0.25))), 1)
+                    comment = gen_comment()
+
+                    f = Feedback(
+                        lesson_id=lesson.id,
+                        student_id=student.id,
+                        rating=rating,
+                        comment=comment,
+                        is_hidden=False,
+                    )
+                    db.add(f)
+
+                    created_fb += 1
+                    if created_fb >= FEEDBACK_TARGET:
+                        break
+                if created_fb >= FEEDBACK_TARGET:
                     break
-            if created >= 100:
-                break
 
         db.commit()
 
@@ -1937,6 +2126,7 @@ def run_seed() -> None:
         raise
     finally:
         db.close()
+
 
 
 if __name__ == "__main__":

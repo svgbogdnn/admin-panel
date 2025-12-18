@@ -609,10 +609,7 @@ export default function AnalyticsPage() {
                   ) : null
                 }
               >
-                <Text type="secondary">
-                  Риск оценивается по истории посещаемости (последние 5 отметок). Если данных мало, используется безопасная эвристика.
-                </Text>
-
+                
                 <div style={{ height: 12 }} />
 
                 <Table
