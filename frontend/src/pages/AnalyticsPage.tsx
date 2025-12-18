@@ -452,7 +452,7 @@ export default function AnalyticsPage() {
             <Col xs={24} sm={12} lg={6}>
               <Card className="card-surface" bordered={false} style={kpiStyle(CHART_COLORS.blue, CHART_COLORS.purple)}>
                 <Statistic
-                  title="Занятий (в фильтре)"
+                  title="Занятия"
                   value={summary?.lessons ?? 0}
                   prefix={<CalendarOutlined style={{ color: CHART_COLORS.blue }} />}
                   valueStyle={{ fontWeight: 700 }}

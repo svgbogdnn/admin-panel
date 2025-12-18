@@ -4,59 +4,85 @@ import {
   Button,
   Card,
   Input,
+  Progress,
   Select,
   Space,
   Table,
   Tag,
+  Tooltip,
   Typography,
   message,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import {
+  BookOutlined,
+  CheckCircleOutlined,
   EditOutlined,
   EyeOutlined,
+  FireOutlined,
+  PauseCircleOutlined,
   PlusOutlined,
   ReloadOutlined,
   SearchOutlined,
+  UserOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
-
 import { type Course, getCourses } from "../api/courses";
 import { useAuth } from "../context/AuthContext";
 
 const { Title, Text } = Typography;
 
-type StatusFilter = "all" | "active" | "inactive";
+const toLower = (v: unknown) => String(v ?? "").toLowerCase();
 
-function formatDate(value?: string | null): string {
-  if (!value) return "—";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleDateString();
-}
+const roleLabel = (role?: string) => {
+  if (role === "admin") return "Администратор";
+  if (role === "teacher") return "Преподаватель";
+  if (role === "student") return "Студент";
+  return "Пользователь";
+};
 
-function toLower(value: unknown): string {
-  return String(value ?? "").toLowerCase();
-}
+const roleTagStyle = (role?: string) => {
+  if (role === "admin") {
+    return {
+      background: "rgba(168, 85, 247, 0.14)",
+      borderColor: "rgba(168, 85, 247, 0.35)",
+      color: "rgba(216, 180, 254, 0.95)",
+    } as const;
+  }
+  if (role === "teacher") {
+    return {
+      background: "rgba(59, 130, 246, 0.14)",
+      borderColor: "rgba(59, 130, 246, 0.35)",
+      color: "rgba(147, 197, 253, 0.95)",
+    } as const;
+  }
+  return {
+    background: "rgba(34, 197, 94, 0.12)",
+    borderColor: "rgba(34, 197, 94, 0.32)",
+    color: "rgba(134, 239, 172, 0.95)",
+  } as const;
+};
+
+const isEndingSoon = (course: Course, days = 14) => {
+  const end = dayjs(course.end_date);
+  if (!end.isValid()) return false;
+  const diff = end.startOf("day").diff(dayjs().startOf("day"), "day");
+  return diff >= 0 && diff <= days;
+};
+
+const formatDate = (v: unknown) => {
+  const d = dayjs(String(v ?? ""));
+  return d.isValid() ? d.format("DD.MM.YYYY") : String(v ?? "");
+};
 
 export default function CoursesPage() {
-  const [courses, setCourses] = useState<Course[]>([]);
+  const nav = useNavigate();
+  const { user } = useAuth();
+
   const [loading, setLoading] = useState(false);
-
+  const [courses, setCourses] = useState<Course[]>([]);
   const [q, setQ] = useState("");
-  const [status, setStatus] = useState<StatusFilter>("all");
-
-  const navigate = useNavigate();
-  const { user, role } = useAuth();
-
-  const isAdmin = role === "admin";
-  const canCreateCourse = role === "admin" || role === "teacher";
-
-  const canEditCourse = (course: Course): boolean => {
-    if (isAdmin) return true;
-    if (user && course.teacher_id === user.id) return true;
-    return false;
-  };
+  const [status, setStatus] = useState<"all" | "active" | "inactive">("all");
 
   const loadCourses = async () => {
     setLoading(true);
@@ -103,37 +129,70 @@ export default function CoursesPage() {
     const total = filtered.length;
     const active = filtered.filter((c) => !!c.is_active).length;
     const inactive = total - active;
-
-    const now = dayjs();
-    const endingSoon = filtered.filter((c) => {
-      if (!c.end_date) return false;
-      const d = dayjs(c.end_date);
-      if (!d.isValid()) return false;
-      const diff = d.startOf("day").diff(now.startOf("day"), "day");
-      return diff >= 0 && diff <= 14;
-    }).length;
-
+    const endingSoon = filtered.filter((c) => isEndingSoon(c, 14)).length;
     return { total, active, inactive, endingSoon };
   }, [filtered]);
+
+  const canCreateCourse = user?.role === "admin" || user?.role === "teacher";
+
+  const canEditCourse = (course: Course) => {
+    if (user?.role === "admin") return true;
+    if (user?.role === "teacher") return String(course.teacher_id) === String(user.id);
+    return false;
+  };
+
+  const kpi = useMemo(() => {
+    const total = Math.max(stats.total, 1);
+    const activePct = Math.round((stats.active / total) * 100);
+    const inactivePct = Math.round((stats.inactive / total) * 100);
+    const soonPct = Math.round((stats.endingSoon / total) * 100);
+    return { activePct, inactivePct, soonPct };
+  }, [stats]);
 
   const columns: ColumnsType<Course> = [
     {
       title: "Курс",
       dataIndex: "name",
       key: "name",
-      sorter: (a, b) => String(a.name ?? "").localeCompare(String(b.name ?? ""), "ru"),
-      render: (_value: unknown, record: Course) => {
-        const description = (record as any).description as string | null | undefined;
-        const meta =
-          (description && description.trim().length > 0 ? description.trim() : null) ??
-          (record.teacher_id ? `Учитель ID: ${record.teacher_id}` : "—");
-
+      sorter: (a, b) => toLower(a.name).localeCompare(toLower(b.name)),
+      render: (value: string, record: Course) => {
+        const soon = isEndingSoon(record, 14);
         return (
-          <div className="cell-title">
-            <div className="cell-title-main">{record.name}</div>
-            <Text className="cell-title-sub" type="secondary" ellipsis={{ tooltip: meta }}>
-              {meta}
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 280 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <Text style={{ fontSize: 15, fontWeight: 600 }}>{value}</Text>
+
+              {soon && (
+                <Tag
+                  style={{
+                    marginInlineEnd: 0,
+                    borderRadius: 999,
+                    padding: "2px 10px",
+                    borderWidth: 1,
+                    background: "rgba(245,158,11,0.14)",
+                    borderColor: "rgba(245,158,11,0.35)",
+                    color: "rgba(253,230,138,0.95)",
+                  }}
+                >
+                  ≤ 14 дней до конца
+                </Tag>
+              )}
+            </div>
+
+            <Text type="secondary" style={{ fontSize: 12, opacity: 0.85 }}>
+              <span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+                <UserOutlined style={{ fontSize: 12 }} />
+                ID преподавателя: {String(record.teacher_id)}
+              </span>
+              <span style={{ marginInline: 10, opacity: 0.55 }}>•</span>
+              {formatDate(record.start_date)} — {formatDate(record.end_date)}
             </Text>
+
+            {(record as any).description ? (
+              <Text type="secondary" style={{ fontSize: 12, opacity: 0.8 }}>
+                {String((record as any).description)}
+              </Text>
+            ) : null}
           </div>
         );
       },
@@ -142,179 +201,482 @@ export default function CoursesPage() {
       title: "Старт",
       dataIndex: "start_date",
       key: "start_date",
-      width: 140,
-      className: "mono",
-      sorter: (a, b) => {
-        const da = a.start_date ? dayjs(a.start_date) : null;
-        const db = b.start_date ? dayjs(b.start_date) : null;
-        const va = da && da.isValid() ? da.valueOf() : -Infinity;
-        const vb = db && db.isValid() ? db.valueOf() : -Infinity;
-        return va - vb;
-      },
-      render: (value: string | null) => formatDate(value),
+      sorter: (a, b) => dayjs(a.start_date).valueOf() - dayjs(b.start_date).valueOf(),
+      render: (v) => formatDate(v),
+      width: 130,
     },
     {
       title: "Конец",
       dataIndex: "end_date",
       key: "end_date",
-      width: 140,
-      className: "mono",
-      sorter: (a, b) => {
-        const da = a.end_date ? dayjs(a.end_date) : null;
-        const db = b.end_date ? dayjs(b.end_date) : null;
-        const va = da && da.isValid() ? da.valueOf() : Infinity;
-        const vb = db && db.isValid() ? db.valueOf() : Infinity;
-        return va - vb;
-      },
-      render: (value: string | null) => formatDate(value),
+      sorter: (a, b) => dayjs(a.end_date).valueOf() - dayjs(b.end_date).valueOf(),
+      render: (v) => formatDate(v),
+      width: 130,
     },
     {
       title: "Статус",
       dataIndex: "is_active",
       key: "is_active",
-      width: 140,
-      render: (value: boolean) =>
-        value ? (
-          <Tag className="pill-tag" color="green">
-            Активный
-          </Tag>
-        ) : (
-          <Tag className="pill-tag" color="red">
-            Неактивный
-          </Tag>
-        ),
-    },
-    {
-      title: "",
-      key: "actions",
-      width: 280,
-      render: (_: unknown, record: Course) => {
-        const canEdit = canEditCourse(record);
+      sorter: (a, b) => Number(!!a.is_active) - Number(!!b.is_active),
+      width: 150,
+      render: (value: boolean, record: Course) => {
+        const active = !!value;
+        const soon = isEndingSoon(record, 14);
         return (
-          <Space size={8} wrap>
-            <Button
-              type="link"
-              size="small"
-              style={{ paddingInline: 0 }}
-              icon={<EyeOutlined />}
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                navigate(`/courses/${record.id}`);
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <Tag
+              style={{
+                marginInlineEnd: 0,
+                borderRadius: 999,
+                padding: "2px 10px",
+                borderWidth: 1,
+                background: active ? "rgba(34,197,94,0.12)" : "rgba(244,63,94,0.12)",
+                borderColor: active ? "rgba(34,197,94,0.35)" : "rgba(244,63,94,0.35)",
+                color: active ? "rgba(134,239,172,0.95)" : "rgba(254,202,202,0.95)",
+                width: "fit-content",
               }}
             >
-              Подробнее
-            </Button>
-    
+              {active ? "Активный" : "Неактивный"}
+            </Tag>
+
+            {soon && (
+              <Text style={{ fontSize: 12, opacity: 0.75, color: "rgba(253,230,138,0.95)" }}>
+                скоро закончится
+              </Text>
+            )}
+          </div>
+        );
+      },
+    },
+    {
+      title: "Действия",
+      key: "actions",
+      width: 240,
+      render: (_: unknown, record: Course) => (
+        <Space>
+          <Button
+            size="small"
+            icon={<EyeOutlined />}
+            onClick={() => nav(`/courses/${record.id}`)}
+            style={{
+              borderRadius: 999,
+              borderColor: "rgba(59,130,246,0.35)",
+              background: "rgba(59,130,246,0.12)",
+              color: "rgba(147,197,253,0.95)",
+            }}
+          >
+            Подробнее
+          </Button>
+
+          {canEditCourse(record) && (
             <Button
-              type="link"
               size="small"
-              style={{ paddingInline: 0 }}
               icon={<EditOutlined />}
-              disabled={!canEdit}
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                navigate(`/courses/${record.id}/edit`);
+              onClick={() => nav(`/courses/${record.id}/edit`)}
+              style={{
+                borderRadius: 999,
+                borderColor: "rgba(168,85,247,0.35)",
+                background: "rgba(168,85,247,0.12)",
+                color: "rgba(216,180,254,0.95)",
               }}
             >
               Редактировать
             </Button>
-          </Space>
-        );
-      },
-    }, 
+          )}
+        </Space>
+      ),
+    },
   ];
+
+  const rowClassName = (record: Course, index: number) => {
+    const zebra = index % 2 === 1 ? "row-zebra" : "";
+    const inactive = !record.is_active ? "row-inactive" : "";
+    const soon = isEndingSoon(record, 14) ? "row-soon" : "";
+    return [zebra, inactive, soon].filter(Boolean).join(" ");
+  };
 
   return (
     <div className="page-wrap">
+      <style>
+        {`
+          .courses-surface .ant-card-body { padding: 18px; }
+          .courses-kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 14px;
+            margin-top: 14px;
+          }
+          .courses-kpi-card {
+            position: relative;
+            overflow: hidden;
+            border-radius: 18px;
+            border: 1px solid rgba(255,255,255,0.08);
+            box-shadow: 0 14px 34px rgba(0,0,0,0.35);
+            backdrop-filter: blur(10px);
+            transform: translateZ(0);
+            transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+          }
+          .courses-kpi-card:hover {
+            transform: translateY(-2px);
+            border-color: rgba(255,255,255,0.16);
+            box-shadow: 0 18px 44px rgba(0,0,0,0.45);
+          }
+          .courses-kpi-inner {
+            position: relative;
+            padding: 16px 16px 14px 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+          }
+          .courses-kpi-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+          }
+          .courses-kpi-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            min-width: 0;
+          }
+          .courses-kpi-icon {
+            width: 38px;
+            height: 38px;
+            border-radius: 14px;
+            display: grid;
+            place-items: center;
+            border: 1px solid rgba(255,255,255,0.12);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.35);
+            flex: 0 0 auto;
+          }
+          .courses-kpi-title {
+            font-size: 12px;
+            opacity: 0.82;
+            letter-spacing: 0.2px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+          }
+          .courses-kpi-value {
+            font-size: 26px;
+            font-weight: 700;
+            line-height: 1.05;
+          }
+          .courses-kpi-sub {
+            font-size: 12px;
+            opacity: 0.8;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+          }
+          .courses-toolbar {
+            display: grid;
+            grid-template-columns: 1fr 200px;
+            gap: 12px;
+            align-items: center;
+          }
+          .courses-toolbar-left {
+            display: grid;
+            grid-template-columns: 1fr 220px;
+            gap: 12px;
+            align-items: center;
+          }
+          @media (max-width: 900px) {
+            .courses-toolbar { grid-template-columns: 1fr; }
+            .courses-toolbar-left { grid-template-columns: 1fr; }
+          }
+          .courses-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 10px;
+            border-radius: 999px;
+            border: 1px solid rgba(255,255,255,0.10);
+            background: rgba(255,255,255,0.04);
+          }
+          .data-table .ant-table-tbody > tr.row-inactive > td {
+            box-shadow: inset 4px 0 0 rgba(244,63,94,0.28);
+          }
+          .data-table .ant-table-tbody > tr.row-soon > td {
+            box-shadow: inset 4px 0 0 rgba(245,158,11,0.28);
+          }
+        `}
+      </style>
+
       <div className="page-head">
-        <div className="page-head-left">
-          <Title level={2} style={{ margin: 0 }}>
-            Курсы
-          </Title>
+        <div className="page-head-left" style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <Title level={2} style={{ margin: 0 }}>
+              Курсы
+            </Title>
+            <Tag
+              style={{
+                margin: 0,
+                borderRadius: 999,
+                padding: "2px 10px",
+                borderWidth: 1,
+                ...roleTagStyle(user?.role),
+              }}
+            >
+              {roleLabel(user?.role)}
+            </Tag>
+          </div>
+
+          <div
+            style={{
+              height: 3,
+              width: 220,
+              borderRadius: 999,
+              background:
+                "linear-gradient(90deg, rgba(34,197,94,0.9), rgba(59,130,246,0.9), rgba(168,85,247,0.9), rgba(245,158,11,0.9))",
+              opacity: 0.85,
+            }}
+          />
         </div>
 
-        <div className="page-head-actions">
-          <Button icon={<ReloadOutlined />} onClick={() => void loadCourses()} loading={loading}>
-            Обновить
-          </Button>
+        <div className="page-head-right">
+          <Space>
+            <Tooltip title="Обновить данные">
+              <Button icon={<ReloadOutlined />} onClick={() => void loadCourses()}>
+                Обновить
+              </Button>
+            </Tooltip>
 
-          {canCreateCourse && (
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate("/courses/new")}>
-              Добавить курс
-            </Button>
-          )}
+            {canCreateCourse && (
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={() => nav("/courses/new")}
+                style={{
+                  borderRadius: 999,
+                  border: "none",
+                  background: "linear-gradient(135deg, rgba(34,197,94,0.95), rgba(59,130,246,0.95))",
+                  boxShadow: "0 12px 26px rgba(0,0,0,0.35)",
+                }}
+              >
+                Добавить курс
+              </Button>
+            )}
+          </Space>
         </div>
       </div>
 
-      <Card className="card-surface" bordered={false} bodyStyle={{ padding: 0 }}>
-        <div className="table-toolbar">
-          <div className="table-toolbar-left">
+      <Card className="courses-surface" bordered={false}>
+        <div className="courses-toolbar">
+          <div className="courses-toolbar-left">
             <Input
+              allowClear
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              allowClear
-              prefix={<SearchOutlined />}
+              prefix={<SearchOutlined style={{ opacity: 0.75 }} />}
               placeholder="Поиск: название, описание, ID учителя, дата"
-              style={{ width: 380 }}
             />
 
             <Select
               value={status}
-              onChange={(v) => setStatus(v as StatusFilter)}
-              style={{ width: 220 }}
+              onChange={(v) => setStatus(v)}
               options={[
                 { value: "all", label: "Все статусы" },
-                { value: "active", label: "Только активные" },
-                { value: "inactive", label: "Только неактивные" },
+                { value: "active", label: "Активные" },
+                { value: "inactive", label: "Неактивные" },
               ]}
             />
           </div>
 
-          <div className="table-toolbar-right">
-            <Text type="secondary">
-              Показано: <span className="mono">{filtered.length}</span> /{" "}
-              <span className="mono">{courses.length}</span>
-            </Text>
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <span className="courses-chip">
+              <BookOutlined />
+              <Text style={{ opacity: 0.85 }}>Показано:</Text>
+              <Text style={{ fontWeight: 700 }}>{filtered.length}</Text>
+              <Text style={{ opacity: 0.55 }}>/</Text>
+              <Text style={{ opacity: 0.85 }}>{courses.length}</Text>
+            </span>
           </div>
         </div>
 
-        <div className="stats">
-          <div className="stat-item">
-            <div className="stat-label">Всего</div>
-            <div className="stat-value">{stats.total}</div>
+        <div className="courses-kpi-grid">
+          <div
+            className="courses-kpi-card"
+            style={{
+              background:
+                "linear-gradient(135deg, rgba(14, 165, 233, 0.16), rgba(59, 130, 246, 0.10))",
+            }}
+          >
+            <div className="courses-kpi-inner">
+              <div className="courses-kpi-head">
+                <div className="courses-kpi-left">
+                  <div
+                    className="courses-kpi-icon"
+                    style={{
+                      background: "linear-gradient(135deg, rgba(14,165,233,0.20), rgba(59,130,246,0.12))",
+                      color: "rgba(147,197,253,0.95)",
+                    }}
+                  >
+                    <BookOutlined />
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                    <div className="courses-kpi-title">Всего курсов (в фильтре)</div>
+                    <div className="courses-kpi-value">{stats.total}</div>
+                  </div>
+                </div>
+
+                <Text style={{ fontSize: 12, opacity: 0.75 }}>всего: {courses.length}</Text>
+              </div>
+
+              <div className="courses-kpi-sub">
+                <span style={{ opacity: 0.82 }}>-</span>
+                <span style={{ opacity: 0.9 }}>-</span>
+              </div>
+
+              <Progress
+                percent={Math.min(100, Math.round((stats.total / Math.max(courses.length, 1)) * 100))}
+                showInfo={false}
+                strokeColor={{ "0%": "rgba(14,165,233,0.95)", "100%": "rgba(59,130,246,0.95)" }}
+                trailColor="rgba(255,255,255,0.06)"
+              />
+            </div>
           </div>
-          <div className="stat-item">
-            <div className="stat-label">Активные</div>
-            <div className="stat-value">{stats.active}</div>
+
+          <div
+            className="courses-kpi-card"
+            style={{
+              background:
+                "linear-gradient(135deg, rgba(34, 197, 94, 0.16), rgba(16, 185, 129, 0.08))",
+            }}
+          >
+            <div className="courses-kpi-inner">
+              <div className="courses-kpi-head">
+                <div className="courses-kpi-left">
+                  <div
+                    className="courses-kpi-icon"
+                    style={{
+                      background: "linear-gradient(135deg, rgba(34,197,94,0.18), rgba(16,185,129,0.10))",
+                      color: "rgba(134,239,172,0.95)",
+                    }}
+                  >
+                    <CheckCircleOutlined />
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                    <div className="courses-kpi-title">Активные</div>
+                    <div className="courses-kpi-value">{stats.active}</div>
+                  </div>
+                </div>
+
+                <Text style={{ fontSize: 12, opacity: 0.8 }}>{kpi.activePct}%</Text>
+              </div>
+
+              <div className="courses-kpi-sub">
+                <span>Доля активных</span>
+                <span style={{ fontWeight: 700 }}>{kpi.activePct}%</span>
+              </div>
+
+              <Progress
+                percent={kpi.activePct}
+                showInfo={false}
+                strokeColor={{ "0%": "rgba(34,197,94,0.95)", "100%": "rgba(16,185,129,0.95)" }}
+                trailColor="rgba(255,255,255,0.06)"
+              />
+            </div>
           </div>
-          <div className="stat-item">
-            <div className="stat-label">Неактивные</div>
-            <div className="stat-value">{stats.inactive}</div>
+
+          <div
+            className="courses-kpi-card"
+            style={{
+              background:
+                "linear-gradient(135deg, rgba(244, 63, 94, 0.14), rgba(249, 115, 22, 0.08))",
+            }}
+          >
+            <div className="courses-kpi-inner">
+              <div className="courses-kpi-head">
+                <div className="courses-kpi-left">
+                  <div
+                    className="courses-kpi-icon"
+                    style={{
+                      background: "linear-gradient(135deg, rgba(244,63,94,0.16), rgba(249,115,22,0.10))",
+                      color: "rgba(254,202,202,0.95)",
+                    }}
+                  >
+                    <PauseCircleOutlined />
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                    <div className="courses-kpi-title">Неактивные</div>
+                    <div className="courses-kpi-value">{stats.inactive}</div>
+                  </div>
+                </div>
+
+                <Text style={{ fontSize: 12, opacity: 0.8 }}>{kpi.inactivePct}%</Text>
+              </div>
+
+              <div className="courses-kpi-sub">
+                <span>Доля неактивных</span>
+                <span style={{ fontWeight: 700 }}>{kpi.inactivePct}%</span>
+              </div>
+
+              <Progress
+                percent={kpi.inactivePct}
+                showInfo={false}
+                strokeColor={{ "0%": "rgba(244,63,94,0.95)", "100%": "rgba(249,115,22,0.95)" }}
+                trailColor="rgba(255,255,255,0.06)"
+              />
+            </div>
           </div>
-          <div className="stat-item">
-            <div className="stat-label">Заканчиваются ≤ 14 дней</div>
-            <div className="stat-value">{stats.endingSoon}</div>
+
+          <div
+            className="courses-kpi-card"
+            style={{
+              background:
+                "linear-gradient(135deg, rgba(168, 85, 247, 0.14), rgba(245, 158, 11, 0.08))",
+            }}
+          >
+            <div className="courses-kpi-inner">
+              <div className="courses-kpi-head">
+                <div className="courses-kpi-left">
+                  <div
+                    className="courses-kpi-icon"
+                    style={{
+                      background: "linear-gradient(135deg, rgba(168,85,247,0.14), rgba(245,158,11,0.10))",
+                      color: "rgba(216,180,254,0.95)",
+                    }}
+                  >
+                    <FireOutlined />
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                    <div className="courses-kpi-title">Заканчиваются ≤ 14 дней</div>
+                    <div className="courses-kpi-value">{stats.endingSoon}</div>
+                  </div>
+                </div>
+
+                <Text style={{ fontSize: 12, opacity: 0.8 }}>{kpi.soonPct}%</Text>
+              </div>
+
+              <div className="courses-kpi-sub">
+                <span>Доля «заканчиваются скоро»</span>
+                <span style={{ fontWeight: 700 }}>{kpi.soonPct}%</span>
+              </div>
+
+              <Progress
+                percent={kpi.soonPct}
+                showInfo={false}
+                strokeColor={{ "0%": "rgba(168,85,247,0.95)", "100%": "rgba(245,158,11,0.95)" }}
+                trailColor="rgba(255,255,255,0.06)"
+              />
+            </div>
           </div>
         </div>
 
-        <Table<Course>
-          className="data-table"
-          rowKey="id"
-          dataSource={filtered}
-          columns={columns}
-          loading={loading}
-          tableLayout="fixed"
-          pagination={{ pageSize: 10, showSizeChanger: false }}
-          rowClassName={(_, index) => (index % 2 === 1 ? "row-zebra" : "")}
-          onRow={(record) => ({
-            onClick: () => navigate(`/courses/${record.id}`),
-          })}
-          locale={{
-            emptyText: q.trim() || status !== "all" ? "Нет курсов по выбранным фильтрам" : "Курсов пока нет",
-          }}
-        />
+        <div style={{ marginTop: 14 }}>
+          <Table
+            className="data-table"
+            rowKey="id"
+            loading={loading}
+            columns={columns}
+            dataSource={filtered}
+            rowClassName={rowClassName}
+            pagination={{ pageSize: 10, showSizeChanger: false }}
+          />
+        </div>
       </Card>
     </div>
   );

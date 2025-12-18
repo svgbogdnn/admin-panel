@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import {
   Button,
   Card,
@@ -13,14 +13,12 @@ import {
   Table,
   Tag,
   Typography,
+  Statistic,
+  Tooltip,
   message,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import {
-  ClearOutlined,
-  DownloadOutlined,
-  ReloadOutlined,
-} from "@ant-design/icons";
+import { ClearOutlined, DownloadOutlined, ReloadOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { getAttendance, type AttendanceRecord } from "../api/attendance";
 import { getCourses, type Course } from "../api/courses";
@@ -47,6 +45,15 @@ type ExportRow = {
   student_name: string;
   status: string;
   comment: string;
+};
+
+const COLORS = {
+  cyan: "#13c2c2",
+  blue: "#1677ff",
+  purple: "#722ed1",
+  green: "#52c41a",
+  orange: "#fa8c16",
+  red: "#f5222d",
 };
 
 function escapeCsvValue(value: unknown): string {
@@ -87,6 +94,19 @@ function makeBuildKey(values: ExportFormValues): string {
   });
 }
 
+function glassCardStyle(accent: string): CSSProperties {
+  return {
+    borderRadius: 16,
+    border: `1px solid ${accent}2b`,
+    background: `radial-gradient(900px 260px at 15% 0%, ${accent}22 0%, transparent 60%),
+                 radial-gradient(700px 220px at 90% 0%, rgba(255,255,255,0.06) 0%, transparent 60%),
+                 linear-gradient(180deg, rgba(255,255,255,0.02) 0%, rgba(0,0,0,0.25) 100%)`,
+    boxShadow: "0 0 0 1px rgba(255,255,255,0.04) inset",
+    overflow: "hidden",
+    backdropFilter: "blur(10px)",
+  };
+}
+
 const statusColor: Record<string, string> = {
   present: "green",
   absent: "red",
@@ -125,7 +145,10 @@ export default function ExportPage() {
     return map;
   }, [courses]);
 
-  const courseOptions = useMemo(() => courses.map((c) => ({ value: c.id, label: c.name })), [courses]);
+  const courseOptions = useMemo(
+    () => courses.map((c) => ({ value: c.id, label: c.name })).sort((a, b) => a.label.localeCompare(b.label, "ru")),
+    [courses],
+  );
 
   const loadCourses = async () => {
     setCoursesLoading(true);
@@ -133,6 +156,7 @@ export default function ExportPage() {
       const data = await getCourses();
       setCourses(data);
     } catch {
+      message.destroy();
       message.error("Не удалось загрузить курсы");
       setCourses([]);
     } finally {
@@ -159,6 +183,14 @@ export default function ExportPage() {
     } finally {
       setStudentsLoading(false);
     }
+  };
+
+  const handleRefresh = async () => {
+    await loadCourses();
+    const id = typeof form.getFieldValue("course_id") === "number" ? (form.getFieldValue("course_id") as number) : undefined;
+    await loadStudentsFromAttendance(id);
+    message.destroy();
+    message.success("Обновлено");
   };
 
   useEffect(() => {
@@ -216,8 +248,10 @@ export default function ExportPage() {
       setLastBuildKey(result.key);
       setLastFilename(result.filename);
 
+      message.destroy();
       message.success(result.built.length > 0 ? `Найдено записей: ${result.built.length}` : "По выбранным фильтрам нет данных");
     } catch {
+      message.destroy();
       message.error("Не удалось сформировать выгрузку");
       setRows(null);
       setCount(null);
@@ -248,6 +282,7 @@ export default function ExportPage() {
       }
 
       if (!dataRows || dataRows.length === 0) {
+        message.destroy();
         message.info("Нет данных для скачивания");
         return;
       }
@@ -268,8 +303,10 @@ export default function ExportPage() {
         downloadTextFile(filename, json, "application/json;charset=utf-8");
       }
 
+      message.destroy();
       message.success("Файл скачан");
     } catch {
+      message.destroy();
       message.error("Не удалось скачать файл");
     } finally {
       setLoading(false);
@@ -283,6 +320,7 @@ export default function ExportPage() {
     setCount(null);
     setLastBuildKey(null);
     setLastFilename(null);
+    message.destroy();
     message.info("Фильтры сброшены");
   };
 
@@ -308,7 +346,10 @@ export default function ExportPage() {
         key: "lesson_date",
         width: 130,
         className: "mono",
-        render: (v: string) => (v ? new Date(v).toLocaleDateString() : "—"),
+        render: (v: string) => {
+          const d = dayjs(v);
+          return d.isValid() ? d.format("DD.MM.YYYY") : "—";
+        },
       },
       {
         title: "ID занятия",
@@ -329,13 +370,13 @@ export default function ExportPage() {
         title: "Статус",
         dataIndex: "status",
         key: "status",
-        width: 170,
+        width: 190,
         render: (v: string) => {
           const key = String(v ?? "");
           const label = statusLabel[key] ?? key ?? "—";
           const color = statusColor[key] ?? "default";
           return (
-            <Tag className="pill-tag" color={color}>
+            <Tag className="exp-pill-tag" color={color}>
               {label || "—"}
             </Tag>
           );
@@ -365,7 +406,7 @@ export default function ExportPage() {
     const id = form.getFieldValue("course_id");
     if (typeof id !== "number") return null;
     return courseNameById.get(id) ?? `ID ${id}`;
-  }, [courseNameById, courseId]);
+  }, [courseNameById, courseId, form]);
 
   const selectedStudentLabel = useMemo(() => {
     const id = form.getFieldValue("student_id");
@@ -374,31 +415,118 @@ export default function ExportPage() {
     return opt?.label ?? `ID ${id}`;
   }, [students, courseId, form]);
 
-  return (
-    <div className="page-wrap">
-      <div className="page-head">
-        <div className="page-head-left">
-          <Title level={2} style={{ margin: 0 }}>
-            Экспорт посещаемости
-          </Title>
-        </div>
+  const exportTypeLabel = useMemo(() => {
+    const t = form.getFieldValue("export_type") as ExportType | undefined;
+    if (!t) return "CSV";
+    return t.toUpperCase();
+  }, [form, courseId]);
 
-        <div className="page-head-actions">
-          <Button icon={<ReloadOutlined />} onClick={() => void loadCourses()} loading={coursesLoading}>
-            Обновить курсы
-          </Button>
-          <Button icon={<ClearOutlined />} onClick={handleReset} disabled={loading}>
-            Сбросить
-          </Button>
-          <Button type="primary" icon={<DownloadOutlined />} onClick={() => void handleDownload()} loading={loading}>
-            Скачать
-          </Button>
+  return (
+    <div className="page-wrap export-page">
+      <style>{`
+        .export-page .exp-hero {
+          padding: 8px 0 6px 0;
+        }
+        .export-page .exp-sub {
+          margin-top: 4px;
+        }
+        .export-page .exp-actions .ant-btn {
+          border-radius: 999px;
+        }
+        .export-page .exp-chip {
+          border-radius: 999px;
+          padding: 4px 10px;
+          border: 1px solid rgba(255,255,255,0.10);
+          background: radial-gradient(420px 120px at 10% 0%, rgba(19,194,194,0.16) 0%, transparent 60%),
+                      linear-gradient(180deg, rgba(255,255,255,0.03) 0%, rgba(0,0,0,0.22) 100%);
+          box-shadow: 0 0 0 1px rgba(255,255,255,0.04) inset;
+          color: rgba(255,255,255,0.78);
+          max-width: 100%;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .export-page .exp-pill-tag {
+          border-radius: 999px;
+          padding: 4px 10px;
+          user-select: none;
+        }
+        .export-page .exp-table .ant-table-thead > tr > th {
+          background: rgba(255,255,255,0.02);
+          border-bottom: 1px solid rgba(255,255,255,0.06);
+        }
+        .export-page .exp-table .ant-table-tbody > tr > td {
+          border-bottom: 1px solid rgba(255,255,255,0.06);
+        }
+        .export-page .exp-table .row-zebra td {
+          background: rgba(255,255,255,0.01);
+        }
+        .export-page .exp-kpi {
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 10px;
+          padding: 12px 14px 10px 14px;
+          border-top: 1px solid rgba(255,255,255,0.06);
+        }
+        @media (max-width: 992px) {
+          .export-page .exp-kpi {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+        }
+        .export-page .exp-kpi-card {
+          border-radius: 14px;
+          border: 1px solid rgba(255,255,255,0.08);
+          background: linear-gradient(180deg, rgba(255,255,255,0.03) 0%, rgba(0,0,0,0.22) 100%);
+          box-shadow: 0 0 0 1px rgba(255,255,255,0.03) inset;
+          padding: 10px 12px;
+        }
+        .export-page .exp-toolbar {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          padding: 14px 14px 10px 14px;
+          flex-wrap: wrap;
+        }
+        .export-page .exp-toolbar-right {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          flex-wrap: wrap;
+          max-width: 100%;
+        }
+      `}</style>
+
+      <div className="exp-hero">
+        <div className="page-head">
+          <div className="page-head-left">
+            <Title level={2} style={{ margin: 0 }}>
+              Экспорт
+            </Title>
+            <div className="exp-sub">
+              <Text type="secondary">Сформируйте превью по фильтрам и скачай CSV или JSON.</Text>
+            </div>
+          </div>
+
+          <div className="page-head-actions exp-actions">
+            <Space wrap>
+              <Button icon={<ReloadOutlined />} onClick={() => void handleRefresh()} loading={coursesLoading || studentsLoading}>
+                Обновить
+              </Button>
+              <Button icon={<ClearOutlined />} onClick={handleReset} disabled={loading}>
+                Сбросить
+              </Button>
+              <Button type="primary" icon={<DownloadOutlined />} onClick={() => void handleDownload()} loading={loading}>
+                Скачать
+              </Button>
+            </Space>
+          </div>
         </div>
       </div>
 
       <Row gutter={16}>
         <Col xs={24} lg={10}>
-          <Card className="card-surface" bordered={false}>
+          <Card bordered={false} style={glassCardStyle(COLORS.cyan)}>
             <Space direction="vertical" size="middle" style={{ width: "100%" }}>
               <div>
                 <Title level={4} style={{ margin: 0 }}>
@@ -444,11 +572,7 @@ export default function ExportPage() {
                   <RangePicker style={{ width: "100%" }} />
                 </Form.Item>
 
-                <Form.Item
-                  label="Тип данных"
-                  name="export_type"
-                  rules={[{ required: true, message: "Выберите тип данных" }]}
-                >
+                <Form.Item label="Тип данных" name="export_type" rules={[{ required: true, message: "Выберите тип данных" }]}>
                   <Select
                     options={[
                       { value: "csv", label: "CSV" },
@@ -457,63 +581,92 @@ export default function ExportPage() {
                   />
                 </Form.Item>
 
-                <Space style={{ width: "100%", justifyContent: "space-between" }}>
-                  <Button onClick={handleReset} disabled={loading}>
+                <Space style={{ width: "100%", justifyContent: "space-between" }} wrap>
+                  <Button onClick={handleReset} disabled={loading} style={{ borderRadius: 999 }}>
                     Очистить
                   </Button>
-                  <Space>
-                    <Button onClick={() => void handleBuild()} loading={loading}>
+                  <Space wrap>
+                    <Button onClick={() => void handleBuild()} loading={loading} style={{ borderRadius: 999 }}>
                       Сформировать
                     </Button>
-                    <Button type="primary" onClick={() => void handleDownload()} loading={loading} icon={<DownloadOutlined />}>
+                    <Button
+                      type="primary"
+                      onClick={() => void handleDownload()}
+                      loading={loading}
+                      icon={<DownloadOutlined />}
+                      style={{ borderRadius: 999 }}
+                    >
                       Скачать
                     </Button>
                   </Space>
                 </Space>
+
+                <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {selectedCourseLabel ? (
+                    <Tooltip title={selectedCourseLabel}>
+                      <div className="exp-chip" style={{ borderColor: `${COLORS.blue}33` }}>
+                        Курс: <span className="mono">{selectedCourseLabel}</span>
+                      </div>
+                    </Tooltip>
+                  ) : (
+                    <div className="exp-chip" style={{ borderColor: "rgba(255,255,255,0.10)" }}>
+                      Курс: <span className="mono">не выбран</span>
+                    </div>
+                  )}
+
+                  {selectedStudentLabel ? (
+                    <Tooltip title={selectedStudentLabel}>
+                      <div className="exp-chip" style={{ borderColor: `${COLORS.purple}33` }}>
+                        Студент: <span className="mono">{selectedStudentLabel}</span>
+                      </div>
+                    </Tooltip>
+                  ) : null}
+                </div>
               </Form>
             </Space>
           </Card>
         </Col>
 
         <Col xs={24} lg={14}>
-          <Card className="card-surface" bordered={false} bodyStyle={{ padding: 0 }}>
-            <div className="table-toolbar">
-              <div className="table-toolbar-left">
+          <Card bordered={false} style={glassCardStyle(COLORS.blue)} bodyStyle={{ padding: 0 }}>
+            <div className="exp-toolbar">
+              <div>
                 <Title level={4} style={{ margin: 0 }}>
                   Результат
                 </Title>
+                <Text type="secondary">Превью показывает первые 8 строк.</Text>
               </div>
-              <div className="table-toolbar-right">
-                <Space size={8}>
-                  {selectedCourseLabel && <Tag className="pill-tag" color="geekblue">{selectedCourseLabel}</Tag>}
-                  {selectedStudentLabel && <Tag className="pill-tag" color="purple">{selectedStudentLabel}</Tag>}
-                  {lastFilename && <Tag className="pill-tag">{lastFilename}</Tag>}
-                </Space>
+
+              <div className="exp-toolbar-right">
+                <Tag className="exp-pill-tag" color="geekblue">
+                  {exportTypeLabel}
+                </Tag>
+                {lastFilename ? (
+                  <Tooltip title={lastFilename}>
+                    <Tag className="exp-pill-tag">{lastFilename}</Tag>
+                  </Tooltip>
+                ) : null}
               </div>
             </div>
 
-            <div className="stats">
-              <div className="stat-item">
-                <div className="stat-label">Найдено записей</div>
-                <div className="stat-value">{count !== null ? count : "—"}</div>
+            <div className="exp-kpi">
+              <div className="exp-kpi-card">
+                <Statistic title="Найдено записей" value={count !== null ? count : "—"} />
               </div>
-              <div className="stat-item">
-                <div className="stat-label">Уник. студентов</div>
-                <div className="stat-value">{previewStats ? previewStats.uniqueStudents : "—"}</div>
+              <div className="exp-kpi-card">
+                <Statistic title="Уник. студентов" value={previewStats ? previewStats.uniqueStudents : "—"} />
               </div>
-              <div className="stat-item">
-                <div className="stat-label">Уник. занятий</div>
-                <div className="stat-value">{previewStats ? previewStats.uniqueLessons : "—"}</div>
+              <div className="exp-kpi-card">
+                <Statistic title="Уник. занятий" value={previewStats ? previewStats.uniqueLessons : "—"} />
               </div>
-              <div className="stat-item">
-                <div className="stat-label">Превью</div>
-                <div className="stat-value">{rows ? `${Math.min(rows.length, 8)} строк` : "—"}</div>
+              <div className="exp-kpi-card">
+                <Statistic title="Превью" value={rows ? `${Math.min(rows.length, 8)} строк` : "—"} />
               </div>
             </div>
 
             {rows ? (
               <Table<ExportRow>
-                className="data-table"
+                className="exp-table"
                 rowKey={(_, idx) => String(idx)}
                 dataSource={rows.slice(0, 8)}
                 columns={previewColumns}
