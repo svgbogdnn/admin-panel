@@ -139,7 +139,7 @@
 #     missing: list[str] = []
 #     skipped_binary: list[str] = []
 
-#     out_path = Path(r"D:\shit delete\a1.txt")
+#     out_path = Path(r"D:\shit delete\proj\frontend_config.txt")
 #     out_path.parent.mkdir(parents=True, exist_ok=True)
 #     with out_path.open("w", encoding="utf-8", newline="\n") as out:
 #         for rel in files:
@@ -148,25 +148,15 @@
 
 #             if not full.exists() or not full.is_file():
 #                 missing.append(rel.as_posix())
-#                 out.write("<FILE NOT FOUND>\n\n")
 #                 continue
 
 #             if is_probably_binary(full):
 #                 skipped_binary.append(rel.as_posix())
-#                 out.write("<SKIPPED: BINARY FILE>\n\n")
 #                 continue
 
 #             text = full.read_text(encoding="utf-8", errors="replace")
 #             out.write(text)
 #             out.write("\n\n")
-
-#         if missing:
-#             out.write("===== MISSING FILES =====\n")
-#             out.write("\n".join(missing) + "\n")
-
-#         if skipped_binary:
-#             out.write("===== SKIPPED BINARY FILES =====\n")
-#             out.write("\n".join(skipped_binary) + "\n")
 
 #     print(f"Готово: {out_path}")
 #     if missing:
