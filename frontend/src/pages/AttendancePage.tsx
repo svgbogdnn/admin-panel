@@ -728,9 +728,6 @@ export default function AttendancePage() {
           </div>
 
           <div className="att-table-meta">
-            <Text type="secondary">
-              Нажми на статус, чтобы быстро отредактировать
-            </Text>
           </div>
         </div>
 

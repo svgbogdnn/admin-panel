@@ -112,7 +112,7 @@ export default function RegisterPage() {
         full_name: values.full_name.trim() || null,
       });
       message.destroy();
-      message.success("Регистрация успешна. Теперь войдите.");
+      message.success("Регистрация успешна. Теперь вы можете войти в свой аккаунт.");
       navigate("/login");
     } catch {
       message.destroy();
