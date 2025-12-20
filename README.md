@@ -1,5 +1,7 @@
 # ITAM project
-
+<p align="center">
+  <img src="./imgs/Analytics/analytics extra.png" width="100%" alt="" />
+</p>
 ---
 
 Как выглядит интерфейс можно посмотреть в директории [**imgs/**](./imgs/). 
