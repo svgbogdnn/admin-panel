@@ -1,0 +1,51 @@
+https://github.com/svgbogdnn/admin-panel
+
+пуш проекта в гитхаб
+git config --global user.name "svgbogdnn"
+git config --global user.email "......."
+git ls-tree -r --name-only HEAD
+cd "D:\Apps\PyCharm\admin panel"  
+git pull (=== git fetch + merge)
+(git pull origin main/whatever)
+git status
+git add .
+git add -A
+git commit -m "commitment"
+git push
+
+
+бекенд 
+cd "D:\Apps\PyCharm panel\backend"
+.\venv\Scripts\Activate.ps1
+uvicorn app.main:app --reload
+http://127.0.0.1:8000/docs
+python -m app.core.seed
+python -m app.core.bigseed
+
+
+фронтенд
+cd "D:\Apps\PyCharm\admin panel\frontend"
+npm run dev
+http://localhost:5173
+
+Докер
+docker pull ghcr.io/svgbogdnn/admin-panel-backend:latest
+docker pull ghcr.io/svgbogdnn/admin-panel-frontend:latest
+
+docker run --rm --name admin-panel-backend -p 8000:8000 ghcr.io/svgbogdnn/admin-panel-backend:latest
+docker run --rm --name admin-panel-frontend -p 5173:5173 ghcr.io/svgbogdnn/admin-panel-frontend:latest
+docker exec -it admin-panel-backend python -c "from app.core.bigseed import seed; seed()"
+
+docker login ghcr.io
+docker pull ghcr.io/svgbogdnn/admin-panel-backend:latest
+docker pull ghcr.io/svgbogdnn/admin-panel-frontend:latest
+docker compose up -d
+docker compose exec backend python -m app.core.bigseed
+
+docker system df #сколько места докер компоуз и конкретно что занимает
+docker compose stop
+docker compose down
+
+VS code settings open = Ctrl + , 
+"Files: Auto Save" = AfterDelay 
+"Files: Auto Save Delay" = 1000 ms
