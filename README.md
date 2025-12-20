@@ -1,10 +1,13 @@
 # ITAM project
+
 <p align="center">
   <img src="./imgs/Analytics/analytics extra.png" width="100%" alt="" />
 </p>
+
 ---
 
 Как выглядит интерфейс можно посмотреть в директории [**imgs/**](./imgs/). 
+
 Структура файлов в проекте расположена в [**readmeS/structure.md**](readmeS/structure.md). 
 
 ---
